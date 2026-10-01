@@ -1,0 +1,280 @@
+// Администратор: список товаров, цвета/размеры/остатки, добавление и удаление товаров.
+import { $, formatPrice, escapeHtml, pluralize, haptic, toast, on } from "./core.js";
+import { BASE_PRODUCTS, CATEGORIES } from "./data.js";
+import { state, api, errorMessage, hasServer } from "./state.js";
+import { CATEGORY_NAMES, colorName, swatchBackground, refreshCatalog } from "./catalog.js";
+import { productImage } from "./photos.js";
+import { sheetBody, openSheet } from "./nav.js";
+
+/** Кнопка удаления срабатывает со второго нажатия */
+function confirmTwice(button, question) {
+  if (button.hasAttribute("data-armed")) return true;
+  sheetBody.querySelectorAll("[data-armed]").forEach((b) => { b.removeAttribute("data-armed"); b.textContent = b.dataset.label; });
+  button.dataset.label = button.textContent;
+  button.setAttribute("data-armed", "");
+  button.textContent = question;
+  haptic("medium");
+  return false;
+}
+
+async function runAction(action, successText) {
+  try {
+    await action();
+    await refreshCatalog();
+    haptic("success");
+    toast(hasServer ? successText : `${successText}. У покупателей — через 1–2 минуты`);
+    return true;
+  } catch (error) {
+    toast(errorMessage(error));
+    return false;
+  }
+}
+
+/* ---------- Список товаров ---------- */
+function productSummary(p) {
+  const e = state.products.find((x) => x.id === p.id) || p;
+  const inStock = e.stock && Object.entries(e.stock)
+    .filter(([key]) => { const [c, s] = key.split("|"); return e.colors.includes(c) && e.sizes.includes(s); })
+    .reduce((sum, [, n]) => sum + Math.max(0, Number(n) || 0), 0);
+  return [CATEGORY_NAMES[p.category], formatPrice(p.price),
+    `${e.colors.length} ${pluralize(e.colors.length, "цвет", "цвета", "цветов")}, ${e.sizes.length} ${pluralize(e.sizes.length, "размер", "размера", "размеров")}`,
+    e.edited && "изменён", e.stock && `на складе ${inStock} шт.`].filter(Boolean).join(" · ");
+}
+
+const productRow = (p, buttons) => `<div class="adm-row"><div class="thumb">${productImage(p, null, { thumb: true })}</div>
+  <div><p class="t">${p.name}</p><p class="s">${productSummary(p)}</p></div>${buttons}</div>`;
+
+export function openAdminProducts() {
+  const hidden = BASE_PRODUCTS.filter((p) => state.hiddenProductIds.includes(p.id));
+  sheetBody.innerHTML = `<div class="grab"></div>
+    <h2 class="p-name">Товары в каталоге</h2>
+    <p class="adm-sub">${state.catalogProducts.length} шт. «Изменить» — цвета, размеры и количество на складе. «Удалить» — весь товар.</p>
+    <button class="primary" id="addProduct">Добавить товар</button>
+    ${hasServer ? "" : `<p class="adm-sub" style="margin-top:10px">Изменения сохраняются в репозиторий GitHub, покупатели увидят их через 1–2 минуты.</p>`}
+    ${state.catalogProducts.map((p) => productRow(p, `<span class="adm-btns">
+      <button class="adm-del" data-edit="${p.id}">Изменить</button><button class="adm-del" data-delete="${p.id}">Удалить</button></span>`)).join("")}
+    ${hidden.length ? `<p class="label">Удалённые из каталога</p><p class="adm-sub">Встроенные товары можно вернуть.</p>
+      ${hidden.map((p) => productRow(p, `<button class="adm-del" data-restore="${p.id}">Вернуть</button>`)).join("")}` : ""}`;
+  sheetBody.onclick = async (e) => {
+    const edit = e.target.closest("[data-edit]"), remove = e.target.closest("[data-delete]"), restore = e.target.closest("[data-restore]");
+    if (e.target.id === "addProduct") openNewProductForm();
+    if (edit) openVariantEditor(Number(edit.dataset.edit));
+    if (remove && confirmTwice(remove, "Точно удалить?")) {
+      remove.disabled = true;
+      await deleteProduct(Number(remove.dataset.delete));
+    }
+    if (restore) {
+      restore.disabled = true;
+      const id = Number(restore.dataset.restore);
+      await runAction(() => api.setHiddenProducts(state.hiddenProductIds.filter((x) => x !== id)), "Товар снова в каталоге");
+    }
+  };
+  openSheet("admin");
+}
+
+/** Встроенный товар скрывается (его можно вернуть), добавленный — удаляется вместе с фото */
+function deleteProduct(id) {
+  const product = state.catalogProducts.find((p) => p.id === id);
+  return product.isCustom
+    ? runAction(() => api.deleteProduct(id), "Товар удалён")
+    : runAction(() => api.setHiddenProducts([...state.hiddenProductIds, id]), "Товар удалён из каталога");
+}
+
+/* ---------- Цвета, размеры и остатки: таблица «цвет × размер» ---------- */
+let draft = null;
+const toggle = (set, value) => (set.has(value) ? set.delete(value) : set.add(value));
+const key = (color, size) => `${color}|${size}`;
+
+function openVariantEditor(id) {
+  const product = state.catalogProducts.find((p) => p.id === id);
+  const v = state.variants[id] || {}, qty = state.stock[id]?.qty;
+  draft = {
+    product,
+    offColors: new Set(v.offColors), offSizes: new Set(v.offSizes), offCombos: new Set(v.offCombos),
+    trackStock: Boolean(qty), qty: { ...qty },
+  };
+  renderVariantEditor();
+  sheetBody.onclick = async (e) => {
+    const t = e.target, { product: p } = draft;
+    if (t.id === "backToProducts") return openAdminProducts();
+    if (t.closest("[data-off-color]")) toggle(draft.offColors, t.closest("[data-off-color]").dataset.offColor);
+    else if (t.closest("[data-off-size]")) toggle(draft.offSizes, t.closest("[data-off-size]").dataset.offSize);
+    else if (t.closest("[data-off-combo]:not(:disabled)")) toggle(draft.offCombos, t.closest("[data-off-combo]").dataset.offCombo);
+    else if (t.id === "trackStock") {
+      draft.trackStock = t.checked;
+      p.colors.forEach((c) => p.sizes.forEach((s) => (draft.qty[key(c, s)] ??= 0)));
+    } else if (t.id === "saveVariants") return saveVariants(t);
+    else if (t.id === "deleteProduct") {
+      if (confirmTwice(t, "Точно удалить весь товар?") && await deleteProduct(p.id)) openAdminProducts();
+      return;
+    } else return;
+    haptic();
+    renderVariantEditor();
+  };
+  sheetBody.oninput = (e) => {
+    const cell = e.target.dataset.qty;
+    if (!cell) return;
+    const n = Math.max(0, Math.min(99999, Math.floor(Number(e.target.value) || 0)));
+    draft.qty[cell] = n;
+    e.target.classList.toggle("zero", n === 0);
+    $("stockTotal").textContent = stockTotal();
+  };
+  openSheet("adminVariants", openAdminProducts);
+}
+
+const activeColors = () => draft.product.colors.filter((c) => !draft.offColors.has(c));
+const activeSizes = () => draft.product.sizes.filter((s) => !draft.offSizes.has(s));
+const stockTotal = () => activeColors().reduce((sum, c) => sum + activeSizes().reduce((n, s) => n + (Number(draft.qty[key(c, s)]) || 0), 0), 0);
+
+function variantCell(color, size) {
+  const d = draft, label = `${colorName(d.product, color)}, ${size}`;
+  const wholeOff = d.offColors.has(color) || d.offSizes.has(size);
+  if (d.trackStock) {
+    if (wholeOff) return `<span class="vcell off"></span>`;
+    const n = Number(d.qty[key(color, size)]) || 0;
+    return `<input class="vqty${n ? "" : " zero"}" type="number" inputmode="numeric" min="0" value="${n}" data-qty="${key(color, size)}" aria-label="${label}: количество">`;
+  }
+  const off = wholeOff || d.offCombos.has(key(color, size));
+  return `<button class="vcell${off ? " off" : ""}" data-off-combo="${key(color, size)}" ${wholeOff ? "disabled" : ""} aria-pressed="${!off}" aria-label="${label}">${off ? "" : "✓"}</button>`;
+}
+
+function renderVariantEditor() {
+  const { product: p, trackStock } = draft, scroll = $("sheet").scrollTop;
+  sheetBody.innerHTML = `<div class="grab"></div>
+    <button class="adm-back" id="backToProducts">← Все товары</button>
+    <h2 class="p-name">${p.name}</h2>
+    <label class="check-line"><input type="checkbox" id="trackStock" ${trackStock ? "checked" : ""}> Вести учёт количества</label>
+    <p class="adm-sub">${trackStock ? `Впишите, сколько штук каждого сочетания на складе. 0 — нет в наличии. ${hasServer ? "Остатки уменьшаются сами при каждом заказе." : "После продажи уменьшайте остаток здесь вручную."}`
+      : "Нажмите на клетку, чтобы убрать сочетание. Без учёта количества товар продаётся без ограничений."} Нажмите на цвет или размер, чтобы убрать его целиком.</p>
+    <div class="vwrap"><table class="vtab">
+      <thead><tr><th></th>${p.sizes.map((s) => `<th><button class="vhead${draft.offSizes.has(s) ? " off" : ""}" data-off-size="${s}">${s}</button></th>`).join("")}</tr></thead>
+      <tbody>${p.colors.map((c) => `<tr><th><button class="vcolor${draft.offColors.has(c) ? " off" : ""}" data-off-color="${c}">
+        <i style="background:${swatchBackground(p, c)}"></i><span>${colorName(p, c)}</span></button></th>
+        ${p.sizes.map((s) => `<td>${variantCell(c, s)}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div>
+    ${trackStock ? `<p class="vtotal">Всего на складе: <b id="stockTotal">${stockTotal()}</b> шт.</p>` : ""}
+    <p class="hint" id="hint"></p>
+    <button class="primary" id="saveVariants">Сохранить</button>
+    <button class="ghost danger" id="deleteProduct">Удалить весь товар</button>`;
+  $("sheet").scrollTop = scroll;
+}
+
+async function saveVariants(button) {
+  const { product: p, trackStock } = draft, colors = activeColors(), sizes = activeSizes();
+  // При учёте количества роль «убрать сочетание» играет остаток 0
+  const offCombos = trackStock ? [] : [...draft.offCombos].filter((k) => { const [c, s] = k.split("|"); return colors.includes(c) && sizes.includes(s); });
+  if (!colors.some((c) => sizes.some((s) => !offCombos.includes(key(c, s))))) {
+    $("hint").textContent = "Должно остаться хотя бы одно сочетание цвета и размера. Чтобы убрать всё, удалите товар целиком.";
+    return haptic("medium");
+  }
+  const qty = trackStock ? Object.fromEntries(p.colors.flatMap((c) => p.sizes.map((s) => [key(c, s), Number(draft.qty[key(c, s)]) || 0]))) : null;
+  button.disabled = true;
+  button.textContent = "Сохраняем…";
+  const saved = await runAction(async () => {
+    await api.setVariants(p.id, { offColors: [...draft.offColors], offSizes: [...draft.offSizes], offCombos });
+    await api.setStock(p.id, qty);
+  }, "Изменения сохранены");
+  if (saved) openAdminProducts();
+  else { button.disabled = false; button.textContent = "Сохранить"; }
+}
+
+/* ---------- Новый товар ---------- */
+let colorRows = [];
+
+function openNewProductForm() {
+  colorRows = [{ hex: "#1B1B1F", name: "Чёрный", photo: "" }];
+  sheetBody.innerHTML = `<div class="grab"></div>
+    <button class="adm-back" id="backToProducts">← Все товары</button>
+    <h2 class="p-name">Новый товар</h2>
+    <label class="field"><span>Название</span><input id="newName" maxlength="80" placeholder="Например, Футболка Base"></label>
+    <div class="two">
+      <label class="field"><span>Цена, ₽</span><input id="newPrice" type="number" inputmode="numeric" min="1" placeholder="2990"></label>
+      <label class="field"><span>Старая цена, ₽</span><input id="newOldPrice" type="number" inputmode="numeric" min="0" placeholder="Если есть скидка"></label>
+    </div>
+    <label class="field"><span>Категория</span><select id="newCategory">${CATEGORIES.map(([id, title]) => `<option value="${id}">${title}</option>`).join("")}</select></label>
+    <label class="field"><span>Описание</span><textarea id="newDescription" maxlength="400" placeholder="Ткань, крой, для чего подходит"></textarea></label>
+    <label class="field"><span>Размеры через запятую</span><input id="newSizes" value="S, M, L, XL, XXL"></label>
+    <label class="check-line"><input type="checkbox" id="newIsNew" checked> Отметить как новинку</label>
+    <p class="label">Цвета и фото</p>
+    <p class="adm-sub">Для каждого цвета нужно своё фото. Первый цвет будет основным.</p>
+    <div id="colorRows"></div>
+    <button class="ghost" id="addColor">Добавить цвет</button>
+    <p class="hint" id="hint"></p>
+    <button class="primary" id="publishProduct">Опубликовать товар</button>`;
+  renderColorRows();
+  sheetBody.onclick = (e) => {
+    const t = e.target;
+    if (t.id === "backToProducts") openAdminProducts();
+    if (t.id === "addColor") { colorRows.push({ hex: "#8A97A5", name: "", photo: "" }); renderColorRows(); }
+    if (t.dataset.removeColor) { colorRows.splice(Number(t.dataset.removeColor), 1); renderColorRows(); }
+    if (t.id === "publishProduct") publishProduct(t);
+  };
+  sheetBody.oninput = (e) => {
+    const row = colorRows[e.target.dataset.row];
+    if (row) row[e.target.type === "color" ? "hex" : "name"] = e.target.value;
+  };
+  sheetBody.onchange = async (e) => {
+    const file = e.target.dataset.photoRow && e.target.files[0];
+    if (!file) return;
+    colorRows[e.target.dataset.photoRow].photo = await compressPhoto(file).catch(() => "");
+    if (!colorRows[e.target.dataset.photoRow].photo) toast(errorMessage({ code: "unsupported_type" }));
+    renderColorRows();
+  };
+  openSheet("adminNewProduct", openAdminProducts);
+}
+
+function renderColorRows() {
+  $("colorRows").innerHTML = colorRows.map((row, i) => `<div class="crow">
+    <input type="color" value="${row.hex}" data-row="${i}" aria-label="Цвет ${i + 1}">
+    <input type="text" value="${escapeHtml(row.name)}" data-row="${i}" placeholder="Название цвета" maxlength="30">
+    <label class="cphoto">${row.photo ? `<img src="${row.photo}" alt="">` : "Фото"}
+      <input type="file" accept="image/jpeg,image/png,image/webp" data-photo-row="${i}" aria-label="Фото для цвета ${i + 1}"></label>
+    ${colorRows.length > 1 ? `<button class="x" data-remove-color="${i}" aria-label="Убрать цвет">✕</button>` : "<span></span>"}
+  </div>`).join("");
+}
+
+/** Уменьшает фото до 1400 px и переводит в JPEG — каталог грузится быстрее */
+function compressPhoto(file, maxSide = 1400) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = Object.assign(document.createElement("canvas"), {
+        width: Math.round(image.naturalWidth * scale), height: Math.round(image.naturalHeight * scale),
+      });
+      canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(image.src);
+      resolve(canvas.toDataURL("image/jpeg", 0.86));
+    };
+    image.onerror = reject;
+    image.src = URL.createObjectURL(file);
+  });
+}
+
+async function publishProduct(button) {
+  const name = $("newName").value.trim(), price = Math.round($("newPrice").value), oldPrice = Math.round($("newOldPrice").value) || 0;
+  const hexes = colorRows.map((r) => r.hex.toUpperCase());
+  const problem = !name ? "Введите название товара"
+    : !(price > 0) ? "Укажите цену больше нуля"
+    : oldPrice && oldPrice <= price ? "Старая цена должна быть больше новой"
+    : colorRows.some((r) => !r.name.trim()) ? "Дайте название каждому цвету"
+    : new Set(hexes).size !== hexes.length ? "Цвета не должны повторяться"
+    : colorRows.some((r) => !r.photo) ? "Добавьте фото для каждого цвета" : "";
+  if (problem) { $("hint").textContent = problem; return haptic("medium"); }
+
+  button.disabled = true;
+  button.textContent = "Публикуем…";
+  const published = await runAction(() => api.createProduct({
+    name, price, old: oldPrice, cat: $("newCategory").value, desc: $("newDescription").value.trim(), isNew: $("newIsNew").checked,
+    sizes: $("newSizes").value.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12),
+    colors: colorRows.map((r, i) => ({ hex: hexes[i], name: r.name.trim(), image: r.photo })),
+  }), "Товар опубликован");
+  if (published) openAdminProducts();
+  else { button.disabled = false; button.textContent = "Опубликовать товар"; }
+}
+
+/** guard — проверка перед открытием (на GitHub Pages: есть ли на устройстве ключ доступа) */
+export function initAdminProducts(guard = (open) => open()) {
+  $("adminProductsButton").onclick = () => { haptic(); guard(openAdminProducts); };
+  on("catalog", () => state.view === "admin" && openAdminProducts());
+}

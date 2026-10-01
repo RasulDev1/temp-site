@@ -1,0 +1,9 @@
+{
+  "name": "temp-men-shop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ТЕМП MEN — Telegram Mini App с управлением товарами",
+  "main": "server.js",
+  "scripts": { "start": "node launcher.js", "server": "node server.js" },
+  "engines": { "node": ">=18" }
+}

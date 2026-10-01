@@ -1,0 +1,4 @@
+.env
+data/
+runtime/
+node_modules/

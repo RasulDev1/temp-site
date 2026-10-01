@@ -1,11 +1,12 @@
 // Администратор: заказы. Принять и отправить реквизиты для оплаты или отказать, если товара нет.
 import { $, formatPrice, formatDate, escapeHtml, pluralize, haptic, toast, storage, openLink } from "./core.js";
-import { state, api, errorMessage } from "./state.js";
+import { state, api, errorMessage, useSupabase } from "./state.js";
+import { watchOrders } from "./supabase.js";
 import { refreshCatalog } from "./catalog.js";
 import { orderItemsHtml, paymentDetails } from "./cart.js";
 import { sheetBody, openSheet } from "./nav.js";
 
-const STATUS = { new: "Новый", accepted: "Принят", rejected: "Отказ" };
+const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", rejected: "Отказ" };
 let openForm = null; // { num, type: "accept" | "reject", text, note }
 
 const newOrdersCount = () => state.adminOrders.filter((o) => o.status === "new").length;
@@ -53,8 +54,11 @@ function decisionResultHtml(o) {
   if (o.status === "new") return "";
   const link = customerLink(o);
   return `<div class="ord-res">
-    <p>${o.status === "accepted" ? `Принят. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>` : `Отказ: «${escapeHtml(o.message)}»`}</p>
-    <p class="adm-sub">${o.delivered ? "Сообщение доставлено покупателю в Telegram."
+    <p>${o.status === "rejected" ? `Отказ: «${escapeHtml(o.message)}»`
+      : `${o.status === "paid" ? "Оплачен" : "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
+    ${o.status === "accepted" && api.markPaid ? `<div class="ord-actions"><button class="primary sm" data-paid="${o.num}">Оплата получена</button></div>` : ""}
+    <p class="adm-sub">${useSupabase ? "Покупатель видит статус и реквизиты во вкладке «Мои заказы»."
+      : o.delivered ? "Сообщение доставлено покупателю в Telegram."
       : "Сообщение не доставлено: покупатель не разрешил боту писать ему. Напишите ему сами по ссылке ниже."}</p>
     ${link ? `<a class="ord-link" href="${link[0]}" data-customer-link>${link[1]}</a>` : ""}</div>`;
 }
@@ -98,6 +102,7 @@ async function onOrdersClick(e) {
   else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(t.dataset.reject) };
   else if (t.hasAttribute("data-cancel")) openForm = null;
   else if (t.dataset.send) return sendDecision(t);
+  else if (t.dataset.paid) return markPaid(t);
   else return;
   renderOrders();
   $("formText")?.focus();
@@ -133,9 +138,28 @@ async function sendDecision(button) {
   }
 }
 
+async function markPaid(button) {
+  button.disabled = true;
+  button.textContent = "Сохраняем…";
+  try {
+    await api.markPaid(Number(button.dataset.paid));
+    haptic("success");
+    toast("Отмечено: оплачен");
+  } catch (error) {
+    toast(errorMessage(error));
+  }
+  await loadAdminOrders();
+  renderOrders();
+}
+
 export function initAdminOrders() {
   $("adminOrdersButton").onclick = () => { haptic(); openAdminOrders(); };
   loadAdminOrders();
   setInterval(() => !document.hidden && loadAdminOrders(), 30000);
   document.addEventListener("visibilitychange", () => !document.hidden && loadAdminOrders());
+  // Supabase Realtime: новый или изменённый заказ появляется сразу, без ожидания
+  if (useSupabase) watchOrders("staff", async ({ id, op }) => {
+    await loadAdminOrders();
+    if (op === "insert") { haptic("success"); toast(`Новый заказ №${id}`); }
+  }, loadAdminOrders);
 }

@@ -16,3 +16,10 @@ export const MANAGER_USERNAME = "light_temshik";
 // Только для GitHub Pages со своим доменом: репозиторий магазина в виде "логин/репозиторий".
 // На адресе логин.github.io/репозиторий он определяется сам — оставьте пусто.
 export const GITHUB_REPO = "";
+
+// Supabase — база заказов и ролей для GitHub Pages (Project Settings → API).
+// С ними заказы не уходят сообщением менеджеру, а сохраняются в базе: менеджер видит их в «Заказах»
+// в реальном времени, а покупатель получает реквизиты прямо во вкладке «Мои заказы».
+// Ключ — publishable, он публичный. Secret / service_role сюда вставлять нельзя!
+export const SUPABASE_URL = "https://ztcltngfpnhhuzyyqnfw.supabase.co";
+export const SUPABASE_KEY = "sb_publishable_8xnrRsc0jbvrdWLQfVl9RA_ChDkxp-a";

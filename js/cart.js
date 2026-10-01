@@ -1,7 +1,8 @@
 // Корзина, оформление заказа и «Мои заказы» покупателя.
 import { $, telegram, telegramUser, formatPrice, formatDate, escapeHtml, haptic, toast, on, storage, replayAnimation, copyToClipboard, openLink } from "./core.js";
 import { DELIVERY_METHODS } from "./data.js";
-import { state, api, saveCart, findProduct, cartTotal, hasServer } from "./state.js";
+import { state, api, saveCart, findProduct, cartTotal, hasServer, useSupabase, hasOrdersBackend } from "./state.js";
+import { watchOrders } from "./supabase.js";
 import { MANAGER_USERNAME } from "./config.js";
 import { colorName, swatchBackground, stockLeft, refreshCatalog } from "./catalog.js";
 import { productImage, applyRecolors } from "./photos.js";
@@ -112,13 +113,13 @@ export async function placeOrder() {
   placingOrder = button.disabled = true;
   button.textContent = "Оформляем…";
   try {
-    if (!hasServer) return sendOrderToManager(order);
-    await askWritePermission();
+    if (!hasOrdersBackend) return sendOrderToManager(order);
+    if (hasServer) await askWritePermission(); // бот пришлёт реквизиты в чат; с Supabase они придут в «Мои заказы»
     const { num } = await api.placeOrder(order);
     rememberOrder({ ...order, num, date: new Date().toISOString(), status: "new" });
     state.cart = [];
     saveCart();
-    showOrderPlaced(num);
+    showOrderPlaced(num, useSupabase ? "Менеджер проверит наличие и пришлёт реквизиты прямо сюда, во вкладку «Мои заказы»." : undefined);
     refreshCatalog(); // остатки изменились
   } catch (error) {
     haptic("medium");
@@ -166,7 +167,7 @@ function showOrderPlaced(num, note = "Когда менеджер провери
 }
 
 /* ---------- Мои заказы ---------- */
-const ORDER_STATUS = { new: "Ждёт подтверждения", accepted: "Принят, ждёт оплаты", rejected: "Отменён" };
+const ORDER_STATUS = { new: "Ждёт подтверждения", accepted: "Принят, ждёт оплаты", paid: "Оплачен, готовим к отправке", rejected: "Отменён" };
 export const paymentDetails = (order) => order.payDetails || order.payUrl || "";
 const isPaymentLink = (text) => /^https:\/\/\S+$/.test(text.trim());
 
@@ -190,7 +191,7 @@ function myOrderHtml(o) {
       <button class="ghost copy" data-copy="${o.num}">Скопировать реквизиты</button></div>
       ${isPaymentLink(details) ? `<a class="primary pay" href="${escapeHtml(details)}" data-pay>Перейти к оплате</a>` : ""}` : ""}
     ${status === "rejected" && o.message ? `<p class="ord-note">${escapeHtml(o.message)}</p>` : ""}
-    ${status === "new" ? `<p class="adm-sub">${hasServer ? "Менеджер проверит наличие и пришлёт реквизиты для оплаты." : "Статус заказа уточняйте у менеджера в Telegram."}</p>` : ""}
+    ${status === "new" ? `<p class="adm-sub">${hasOrdersBackend ? "Менеджер проверит наличие и пришлёт реквизиты для оплаты. Статус обновится здесь сам." : "Статус заказа уточняйте у менеджера в Telegram."}</p>` : ""}
   </article>`;
 }
 
@@ -200,7 +201,7 @@ export async function renderMyOrders(reload = false) {
     ? `<h2 class="p-name">Мои заказы</h2>${state.myOrders.map(myOrderHtml).join("")}`
     : emptyState("Заказов пока нет", "Здесь появятся ваши заказы и реквизиты для оплаты.", "goShopping"));
   draw();
-  if (!reload || !hasServer || !telegram?.initData) return;
+  if (!reload || !hasOrdersBackend || !telegram?.initData) return;
   try {
     state.myOrders = (await api.myOrders()).orders || [];
     storage.set("temp_my_orders", state.myOrders);
@@ -225,4 +226,14 @@ export function initCart() {
   };
   on("catalog", () => state.tab === "cart" && renderCartPage());
   document.addEventListener("visibilitychange", () => !document.hidden && state.tab === "orders" && renderMyOrders(true));
+  if (useSupabase) watchMyOrders();
+}
+
+/** Supabase: заказ меняется — перечитываем «Мои заказы». Пришли реквизиты — сообщаем покупателю. */
+function watchMyOrders() {
+  watchOrders("user", async ({ id, op }) => {
+    await renderMyOrders(true);
+    const order = state.myOrders.find((o) => o.num === Number(id));
+    if (op === "update" && order?.status === "accepted") { haptic("success"); toast(`Заказ №${order.num}: пришли реквизиты`); }
+  }, () => renderMyOrders(true)); // после переподключения догружаем пропущенное
 }

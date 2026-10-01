@@ -1,6 +1,7 @@
 // Точка входа: показываем встроенный каталог сразу, остальное догружаем с сервера.
-import { $, telegram, inTelegram, setupTelegram } from "./core.js";
-import { state, api, hasServer } from "./state.js";
+import { $, telegram, inTelegram, setupTelegram, emit } from "./core.js";
+import { state, api, hasServer, useSupabase } from "./state.js";
+import { supabaseLogin } from "./supabase.js";
 import { rebuildCatalog, refreshCatalog } from "./catalog.js";
 import { initNavigation, syncMainButton } from "./nav.js";
 import { initShop } from "./shop.js";
@@ -28,17 +29,30 @@ if (!hasServer) {
   $("staffLink").hidden = false;
   $("staffLink").onclick = () => openStaffAccess();
   const withKey = (open) => (hasGitHubKey() ? open() : openStaffAccess("Чтобы сохранять изменения, добавьте на этом устройстве ключ доступа."));
-  let staffToolsReady = false;
+  let staffToolsReady = false, ordersReady = false;
   initRoles(({ role }) => {
     state.isAdmin = role !== "customer";
     $("adminBar").hidden = !state.isAdmin;
-    $("adminOrdersButton").hidden = true; // заказы приходят в Telegram сообщениями
+    // С Supabase заказы видны в «Заказах» (ключ GitHub не нужен); без него приходят в Telegram сообщениями
+    $("adminOrdersButton").hidden = !useSupabase;
     $("adminStaffButton").hidden = role !== "director";
     if (state.isAdmin && !staffToolsReady) {
       staffToolsReady = true;
       initAdminProducts(withKey);
       initStaffManager(withKey);
     }
+    if (state.isAdmin && useSupabase && !ordersReady) {
+      ordersReady = true;
+      initAdminOrders();
+      const focusOrder = Number(new URLSearchParams(location.search).get("order") || telegram?.initDataUnsafe?.start_param?.replace(/^order_/, ""));
+      if (focusOrder) openAdminOrders(focusOrder);
+    }
+  });
+  // Supabase: база проверяет подпись Telegram и сообщает роль (менеджер, админ) — она добавляется к роли из config.js
+  if (useSupabase) supabaseLogin().then((me) => {
+    if (!me) return;
+    state.dbRole = me.role;
+    emit("dbrole");
   });
 }
 

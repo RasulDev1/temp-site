@@ -10,7 +10,12 @@ export function detectRole() {
   const id = telegramUser?.id;
   if (sameId(DIRECTOR.telegramId, id)) return { role: "director", position: "Директор", name: DIRECTOR.name };
   const manager = state.staff.find((s) => sameId(s.telegramId, id));
-  return manager ? { role: "manager", position: manager.position || "Менеджер", name: manager.name } : { role: "customer" };
+  if (manager) return { role: "manager", position: manager.position || "Менеджер", name: manager.name };
+  // Роль из базы Supabase (её назначают в «Сотрудниках»)
+  const name = [telegramUser?.first_name, telegramUser?.last_name].filter(Boolean).join(" ");
+  if (state.dbRole === "admin") return { role: "director", position: "Директор", name };
+  if (state.dbRole === "manager") return { role: "manager", position: "Менеджер", name };
+  return { role: "customer" };
 }
 
 export const isStaff = () => state.role.role !== "customer";
@@ -35,4 +40,5 @@ export function initRoles(onChange) {
   };
   update();
   on("catalog", update);
+  on("dbrole", update); // роль пришла из Supabase
 }

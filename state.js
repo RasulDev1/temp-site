@@ -1,16 +1,11 @@
 // Общее состояние приложения и запросы к серверу.
 import { storage, telegram } from "./core.js";
 import { API_URL } from "./config.js";
-import { githubApi, githubPhotoUrl } from "./github.js";
-import { supabaseApi, supabaseEnabled } from "./supabase.js";
+import { githubApi, githubPhotoUrl, repository } from "./github.js";
 
 /** Есть ли сервер магазина. На GitHub Pages без API_URL его нет: только витрина и заказ сообщением менеджеру. */
 const isGitHubPages = location.hostname.endsWith(".github.io");
 export const hasServer = Boolean(API_URL) || !isGitHubPages;
-/** На GitHub Pages заказы хранятся в Supabase, если он настроен в config.js */
-export const useSupabase = !hasServer && supabaseEnabled;
-/** Есть куда сохранить заказ: свой сервер или Supabase. Иначе заказ уходит сообщением менеджеру. */
-export const hasOrdersBackend = hasServer || useSupabase;
 export const serverUrl = (path) => (API_URL ? API_URL.replace(/\/+$/, "") : "") + path;
 /** Адрес фото добавленного товара: с сервера или из репозитория (GitHub Pages) */
 export const imageUrl = (path) => (hasServer ? serverUrl(path) : githubPhotoUrl(path));
@@ -32,7 +27,6 @@ export const state = {
   isAdmin: false,
   staff: [],            // менеджеры: { telegramId, name, position } — назначает директор
   role: { role: "customer" }, // { role: "director" | "manager" | "customer", position, name }
-  dbRole: null,         // роль в базе Supabase: "user" | "manager" | "admin"
   adminOrders: [],
 };
 
@@ -70,15 +64,18 @@ const serverApi = {
   setStock: (id, qty) => request("PUT", `/api/stock/${id}`, qty ? { qty } : { tracked: false }),
 };
 
-/** На GitHub Pages каталог и управление товарами работают через репозиторий, заказы — через Supabase */
-export const api = hasServer ? serverApi : { ...serverApi, ...githubApi, ...(useSupabase ? supabaseApi : {}) };
+/** На GitHub Pages каталог и управление товарами работают через репозиторий */
+export const api = hasServer ? serverApi : { ...serverApi, ...githubApi };
 
 export function errorMessage(error) {
   return {
+    bad_key: "GitHub не принял ключ: он удалён, истёк или перевыпущен. Введите новый ключ в «Для сотрудников».",
+    repo_not_found: `Ключ не видит репозиторий ${repository}. Проверьте в настройках ключа: Repository access — этот репозиторий, Contents — Read and write, и нажмите Update.`,
+    github_offline: "Не удалось связаться с GitHub (api.github.com). Попробуйте другую сеть или VPN.",
+    github_error: `GitHub ответил ошибкой ${error?.status || ""}${error?.detail ? ": " + error.detail : ""}. Повторите через минуту.`,
     unauthorized: "Откройте магазин в Telegram.",
     forbidden: hasServer ? "Нет прав на это действие. Войдите как администратор." : "Ключ GitHub не подходит или истёк. Войдите заново.",
-    conflict: "Этот заказ уже обработан другим менеджером.",
-    not_staff: "Нет прав на это действие. Обратитесь к директору.",
+    conflict: "Этот заказ уже обработан другим администратором.",
     too_large: "Фото слишком большое. Выберите файл поменьше.",
     unsupported_type: "Этот формат фото не подходит. Выберите JPG или PNG.",
     rate_limited: "Слишком много действий подряд. Подождите минуту и повторите.",

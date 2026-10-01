@@ -7,12 +7,28 @@ import { sheetBody, openSheet } from "./nav.js";
 
 let editingId = null; // Telegram ID редактируемого менеджера; 0 — новый
 
+/** Supabase: доступ к заказам — по роли в базе. Назначили менеджера — роль manager, сняли — user. */
+async function syncDatabaseRoles(before, after) {
+  if (!api.setRole) return true;
+  const was = new Set(before.map((m) => m.telegramId)), now = new Set(after.map((m) => m.telegramId));
+  try {
+    for (const id of now) if (!was.has(id)) await api.setRole(id, "manager");
+    for (const id of was) if (!now.has(id)) await api.setRole(id, "user");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function saveStaff(staff, successText) {
   try {
+    const before = state.staff;
     await api.setStaff(staff);
     await refreshCatalog();
+    const synced = await syncDatabaseRoles(before, staff);
     haptic("success");
-    toast(`${successText}. У сотрудника — через 1–2 минуты`);
+    toast(synced ? `${successText}. У сотрудника — через 1–2 минуты`
+      : `${successText}, но доступ к заказам не изменён: в базе Supabase у вас нет роли администратора`);
     return true;
   } catch (error) {
     toast(errorMessage(error));

@@ -28,7 +28,6 @@ const fail = (error) => { throw { code: error?.code === "42501" ? "not_staff" : 
 /** Вход при старте: база проверяет подпись Telegram, регистрирует пользователя и возвращает роль */
 export function supabaseLogin() {
   loginPromise ||= (async () => {
-    if (!telegram?.initData) return null; // вне Telegram — только витрина
     const { data, error } = await db().rpc("tg_login");
     return error || !data?.telegram_id ? null : (me = data);
   })().catch(() => null);

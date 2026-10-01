@@ -1,9 +1,9 @@
 // Директор назначает менеджеров: Telegram ID, ФИО и должность.
-import { $, escapeHtml, haptic, toast, on } from "./core.js";
-import { state, api, errorMessage } from "./state.js";
-import { refreshCatalog } from "./catalog.js";
-import { keyInstructions } from "./staff-access.js";
-import { sheetBody, openSheet } from "./nav.js";
+import { $, escapeHtml, haptic, toast, on } from "./core.js?v=20261001b";
+import { state, api, errorMessage } from "./state.js?v=20261001b";
+import { refreshCatalog } from "./catalog.js?v=20261001b";
+import { keyInstructions } from "./staff-access.js?v=20261001b";
+import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
 let editingId = null; // Telegram ID редактируемого менеджера; 0 — новый
 

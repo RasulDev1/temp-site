@@ -1,8 +1,8 @@
 // Роли: директор (задан в config.js), менеджеры (назначает директор), покупатели — все остальные.
 // Роль определяется по Telegram ID того, кто открыл магазин.
-import { $, telegramUser, escapeHtml, on } from "./core.js";
-import { DIRECTOR } from "./config.js";
-import { state } from "./state.js";
+import { $, telegramUser, escapeHtml, on } from "./core.js?v=20261001b";
+import { DIRECTOR } from "./config.js?v=20261001b";
+import { state } from "./state.js?v=20261001b";
 
 const sameId = (a, b) => Number(a) > 0 && Number(a) === Number(b);
 

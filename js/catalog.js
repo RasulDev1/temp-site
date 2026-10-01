@@ -1,7 +1,7 @@
 // Каталог: встроенные и добавленные товары, убранные варианты, остатки на складе.
-import { BASE_PRODUCTS, CATEGORIES, COLOR_NAMES } from "./data.js";
-import { emit, escapeHtml } from "./core.js";
-import { state, api, saveCart, imageUrl } from "./state.js";
+import { BASE_PRODUCTS, CATEGORIES, COLOR_NAMES } from "./data.js?v=20261001b";
+import { emit, escapeHtml } from "./core.js?v=20261001b";
+import { state, api, saveCart, imageUrl } from "./state.js?v=20261001b";
 
 export const CATEGORY_NAMES = Object.fromEntries(CATEGORIES);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;

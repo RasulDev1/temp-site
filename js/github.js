@@ -2,8 +2,8 @@
 // а администратор сохраняет изменения через GitHub API своим ключом доступа.
 // Ключ хранится только на устройстве сотрудника. Роль (директор, менеджер) определяется по Telegram ID,
 // а ключ нужен, чтобы сохранять изменения: без него посторонний ничего не изменит, даже подделав роль.
-import { storage } from "./core.js";
-import { GITHUB_REPO } from "./config.js";
+import { storage } from "./core.js?v=20261001b";
+import { GITHUB_REPO } from "./config.js?v=20261001b";
 
 const CATALOG_PATH = "catalog/catalog.json";
 const PHOTOS_DIR = "catalog/photos";

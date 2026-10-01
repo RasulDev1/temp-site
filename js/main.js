@@ -1,17 +1,17 @@
 // Точка входа: показываем встроенный каталог сразу, остальное догружаем с сервера.
-import { $, telegram, inTelegram, setupTelegram, emit } from "./core.js";
-import { state, api, hasServer, useSupabase } from "./state.js";
-import { supabaseLogin } from "./supabase.js";
-import { rebuildCatalog, refreshCatalog } from "./catalog.js";
-import { initNavigation, syncMainButton } from "./nav.js";
-import { initShop } from "./shop.js";
-import { initCart } from "./cart.js";
-import { initAdminProducts } from "./admin-products.js";
-import { initAdminOrders, openAdminOrders } from "./admin-orders.js";
-import { hasGitHubKey } from "./github.js";
-import { initRoles } from "./roles.js";
-import { openStaffAccess } from "./staff-access.js";
-import { initStaffManager } from "./admin-staff.js";
+import { $, telegram, inTelegram, setupTelegram, emit } from "./core.js?v=20261001b";
+import { state, api, hasServer, useSupabase } from "./state.js?v=20261001b";
+import { supabaseLogin } from "./supabase.js?v=20261001b";
+import { rebuildCatalog, refreshCatalog } from "./catalog.js?v=20261001b";
+import { initNavigation, syncMainButton } from "./nav.js?v=20261001b";
+import { initShop } from "./shop.js?v=20261001b";
+import { initCart } from "./cart.js?v=20261001b";
+import { initAdminProducts } from "./admin-products.js?v=20261001b";
+import { initAdminOrders, openAdminOrders } from "./admin-orders.js?v=20261001b";
+import { hasGitHubKey } from "./github.js?v=20261001b";
+import { initRoles } from "./roles.js?v=20261001b";
+import { openStaffAccess } from "./staff-access.js?v=20261001b";
+import { initStaffManager } from "./admin-staff.js?v=20261001b";
 
 document.documentElement.classList.toggle("in-telegram", inTelegram);
 setupTelegram();

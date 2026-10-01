@@ -1,12 +1,12 @@
 // Корзина, оформление заказа и «Мои заказы» покупателя.
-import { $, telegram, telegramUser, formatPrice, formatDate, escapeHtml, haptic, toast, on, storage, replayAnimation, copyToClipboard, openLink } from "./core.js";
-import { DELIVERY_METHODS } from "./data.js";
-import { state, api, saveCart, findProduct, cartTotal, hasServer, useSupabase, hasOrdersBackend } from "./state.js";
-import { watchOrders } from "./supabase.js";
-import { MANAGER_USERNAME } from "./config.js";
-import { colorName, swatchBackground, stockLeft, refreshCatalog } from "./catalog.js";
-import { productImage, applyRecolors } from "./photos.js";
-import { sheetBody, openSheet, closeSheet, setTab, openCart, syncMainButton } from "./nav.js";
+import { $, telegram, telegramUser, formatPrice, formatDate, escapeHtml, haptic, toast, on, storage, replayAnimation, copyToClipboard, openLink } from "./core.js?v=20261001b";
+import { DELIVERY_METHODS } from "./data.js?v=20261001b";
+import { state, api, saveCart, findProduct, cartTotal, hasServer, useSupabase, hasOrdersBackend } from "./state.js?v=20261001b";
+import { watchOrders } from "./supabase.js?v=20261001b";
+import { MANAGER_USERNAME } from "./config.js?v=20261001b";
+import { colorName, swatchBackground, stockLeft, refreshCatalog } from "./catalog.js?v=20261001b";
+import { productImage, applyRecolors } from "./photos.js?v=20261001b";
+import { sheetBody, openSheet, closeSheet, setTab, openCart, syncMainButton } from "./nav.js?v=20261001b";
 
 const tint = (color) => `color-mix(in srgb, ${color} 14%, var(--bg))`;
 const emptyState = (title, text, buttonId) =>
@@ -128,13 +128,22 @@ export async function placeOrder() {
       toast("Часть товара закончилась, корзина обновлена");
       return openCart();
     }
-    $("hint").textContent = error.code === "unauthorized" ? "Откройте магазин в Telegram, чтобы оформить заказ."
+    $("hint").textContent = error.code === "unauthorized" ? (LOGIN_ERRORS[error.reason] || LOGIN_ERRORS.server)
       : "Не удалось оформить заказ. Проверьте соединение и повторите.";
   } finally {
     placingOrder = button.disabled = false;
     button.textContent = "Подтвердить заказ";
   }
 }
+
+/** Почему не удалось войти в базу заказов (Supabase) — чтобы было понятно, что чинить */
+const LOGIN_ERRORS = {
+  no_library: "Не загрузилась библиотека базы заказов (cdn.jsdelivr.net). Проверьте интернет или VPN и перезапустите магазин.",
+  no_function: "Магазин не настроен: в базе Supabase нет функции tg_login. Сообщите администратору.",
+  bad_signature: "База заказов отклонила вход (код 42501): её правила требуют подписанные данные Telegram, а их нет или токен бота в Supabase Vault неверный.",
+  network: "Нет связи с базой заказов. Проверьте интернет и повторите.",
+  server: "База заказов ответила ошибкой. Повторите через минуту или сообщите администратору.",
+};
 
 /** Без сервера (GitHub Pages): заказ уходит сообщением менеджеру, текст уже вписан в чат */
 function sendOrderToManager(order) {
@@ -201,7 +210,7 @@ export async function renderMyOrders(reload = false) {
     ? `<h2 class="p-name">Мои заказы</h2>${state.myOrders.map(myOrderHtml).join("")}`
     : emptyState("Заказов пока нет", "Здесь появятся ваши заказы и реквизиты для оплаты.", "goShopping"));
   draw();
-  if (!reload || !hasOrdersBackend || !telegram?.initData) return;
+  if (!reload || !hasOrdersBackend) return;
   try {
     state.myOrders = (await api.myOrders()).orders || [];
     storage.set("temp_my_orders", state.myOrders);

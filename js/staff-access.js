@@ -1,10 +1,10 @@
 // «Для сотрудников»: свой Telegram ID (его директор вписывает при назначении менеджера)
 // и ключ доступа, без которого изменения не сохраняются в репозиторий (GitHub Pages).
-import { $, telegramUser, escapeHtml, haptic, openLink, copyToClipboard } from "./core.js";
-import { state, errorMessage } from "./state.js";
-import { repository, signIn, signOut, hasGitHubKey } from "./github.js";
-import { isStaff, isDirector } from "./roles.js";
-import { sheetBody, openSheet } from "./nav.js";
+import { $, telegramUser, escapeHtml, haptic, openLink, copyToClipboard } from "./core.js?v=20261001b";
+import { state, errorMessage } from "./state.js?v=20261001b";
+import { repository, signIn, signOut, hasGitHubKey } from "./github.js?v=20261001b";
+import { isStaff, isDirector } from "./roles.js?v=20261001b";
+import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
 const TOKEN_PAGE = "https://github.com/settings/personal-access-tokens/new";
 

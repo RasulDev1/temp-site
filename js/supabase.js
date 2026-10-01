@@ -3,14 +3,16 @@
 // подписанные Telegram данные с ID пользователя. База сама проверяет подпись токеном бота
 // и по правилам RLS решает, кому что видно: покупателю — свои заказы, персоналу — все.
 // Библиотека supabase-js подключена тегом <script> в index.html (window.supabase).
-import { telegram } from "./core.js";
-import { SUPABASE_URL, SUPABASE_KEY } from "./config.js";
+import { telegram } from "./core.js?v=20261001b";
+import { SUPABASE_URL, SUPABASE_KEY } from "./config.js?v=20261001b";
 
 export const supabaseEnabled = Boolean(SUPABASE_URL && SUPABASE_KEY);
 
 let client = null;
 let me = null;          // { telegram_id, username, role, topic, staff_topic }
 let loginPromise = null;
+let loginError = null;  // почему не удалось войти — показываем в подсказке вместо общей фразы
+export const supabaseLoginError = () => loginError;
 
 function db() {
   if (client) return client;
@@ -25,15 +27,23 @@ function db() {
 
 const fail = (error) => { throw { code: error?.code === "42501" ? "not_staff" : "server", raw: error }; };
 
-/** Вход при старте: база проверяет подпись Telegram, регистрирует пользователя и возвращает роль */
+/** Вход при старте: база проверяет подпись Telegram, регистрирует пользователя и возвращает роль.
+ *  Удачный вход запоминается; неудачный — нет, следующая попытка (например, «Подтвердить заказ») войдёт заново. */
 export function supabaseLogin() {
+  if (me) return Promise.resolve(me);
   loginPromise ||= (async () => {
-    if (!telegram?.initData) return null; // вне Telegram — только витрина
-    const { data, error } = await db().rpc("tg_login");
-    return error || !data?.telegram_id ? null : (me = data);
-  })().catch(() => null);
+    if (!window.supabase?.createClient) return fail_("no_library");    // не загрузился cdn.jsdelivr.net
+    const { data, error, status } = await db().rpc("tg_login");
+    if (!error && data?.telegram_id) { loginError = null; return (me = data); }
+    console.warn("Supabase tg_login:", status, error);
+    if (error?.code === "PGRST202" || status === 404) return fail_("no_function"); // в базе нет tg_login
+    if (error?.code === "42501") return fail_("bad_signature");                    // база не приняла подпись
+    return fail_(status === 0 ? "network" : "server");
+  })().catch((e) => { console.warn("Supabase tg_login:", e); return fail_("network"); })
+    .finally(() => { loginPromise = null; });
   return loginPromise;
 }
+function fail_(reason) { loginError = reason; return null; }
 
 /* В базе статусы new · awaiting_payment · paid · cancelled; в интерфейсе — new · accepted · paid · rejected */
 const STATUS = { awaiting_payment: "accepted", cancelled: "rejected" };
@@ -56,7 +66,7 @@ async function setStatus(num, from, patch) {
 /** Те же действия, что у сервера (state.js), — модули заказов не замечают разницы */
 export const supabaseApi = {
   async placeOrder(order) {
-    if (!(await supabaseLogin())) throw { code: "unauthorized" };
+    if (!(await supabaseLogin())) throw { code: "unauthorized", reason: loginError };
     // user_id и статус 'new' ставит сама база, клиент их не передаёт
     const { data, error } = await db().from("orders").insert({
       items: order.items, total: order.total, customer_name: order.name, phone: order.phone,

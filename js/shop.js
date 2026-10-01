@@ -1,10 +1,10 @@
 // Витрина: категории, сетка товаров, карточка товара, добавление в корзину.
-import { $, formatPrice, haptic, toast, on, replayAnimation, reducedMotion } from "./core.js";
-import { CATEGORIES } from "./data.js";
-import { state, saveCart, findProduct } from "./state.js";
-import { colorName, swatchBackground, stockLeft, isUnavailable, isSoldOut } from "./catalog.js";
-import { productImage, swapImage, photoForColor, recolor } from "./photos.js";
-import { sheetBody, openSheet, closeSheet, syncMainButton } from "./nav.js";
+import { $, formatPrice, haptic, toast, on, replayAnimation, reducedMotion } from "./core.js?v=20261001b";
+import { CATEGORIES } from "./data.js?v=20261001b";
+import { state, saveCart, findProduct } from "./state.js?v=20261001b";
+import { colorName, swatchBackground, stockLeft, isUnavailable, isSoldOut } from "./catalog.js?v=20261001b";
+import { productImage, swapImage, photoForColor, recolor } from "./photos.js?v=20261001b";
+import { sheetBody, openSheet, closeSheet, syncMainButton } from "./nav.js?v=20261001b";
 
 const tint = (color) => `color-mix(in srgb, ${color} 14%, var(--bg))`;
 const priceHtml = (p) => `<b>${formatPrice(p.price)}</b>${p.oldPrice ? `<s>${formatPrice(p.oldPrice)}</s>` : ""}`;

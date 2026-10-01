@@ -1,8 +1,8 @@
 // Навигация: всплывающая шторка, вкладки «Корзина · Мои заказы · Товары», главная кнопка Telegram.
-import { $, telegram, inTelegram, formatPrice, haptic, replayAnimation } from "./core.js";
-import { state, cartCount, cartTotal } from "./state.js";
-import { addSelectedToCart } from "./shop.js";
-import { renderCartPage, openCheckout, placeOrder, renderMyOrders } from "./cart.js";
+import { $, telegram, inTelegram, formatPrice, haptic, replayAnimation } from "./core.js?v=20261001b";
+import { state, cartCount, cartTotal } from "./state.js?v=20261001b";
+import { addSelectedToCart } from "./shop.js?v=20261001b";
+import { renderCartPage, openCheckout, placeOrder, renderMyOrders } from "./cart.js?v=20261001b";
 
 export const sheetBody = $("sheetBody");
 let onBack = null;

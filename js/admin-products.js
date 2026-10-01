@@ -1,10 +1,10 @@
 // Администратор: список товаров, цвета/размеры/остатки, добавление и удаление товаров.
-import { $, formatPrice, escapeHtml, pluralize, haptic, toast, on } from "./core.js";
-import { BASE_PRODUCTS, CATEGORIES } from "./data.js";
-import { state, api, errorMessage, hasServer } from "./state.js";
-import { CATEGORY_NAMES, colorName, swatchBackground, refreshCatalog } from "./catalog.js";
-import { productImage } from "./photos.js";
-import { sheetBody, openSheet } from "./nav.js";
+import { $, formatPrice, escapeHtml, pluralize, haptic, toast, on } from "./core.js?v=20261001b";
+import { BASE_PRODUCTS, CATEGORIES } from "./data.js?v=20261001b";
+import { state, api, errorMessage, hasServer } from "./state.js?v=20261001b";
+import { CATEGORY_NAMES, colorName, swatchBackground, refreshCatalog } from "./catalog.js?v=20261001b";
+import { productImage } from "./photos.js?v=20261001b";
+import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
 /** Кнопка удаления срабатывает со второго нажатия */
 function confirmTwice(button, question) {

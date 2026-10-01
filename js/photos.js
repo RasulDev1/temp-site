@@ -1,6 +1,6 @@
 // Фото товаров: разметка, уменьшенные копии для каталога, перекраска ткани по маске, плавная смена.
-import { reducedMotion } from "./core.js";
-import { colorName } from "./catalog.js";
+import { reducedMotion } from "./core.js?v=20261001b";
+import { colorName } from "./catalog.js?v=20261001b";
 
 /** Уменьшенная копия есть только у встроенных фото */
 const thumbnailOf = (url) => (url.startsWith("img/products/") ? url.replace(/\.jpg$/, "-thumb.jpg") : url);

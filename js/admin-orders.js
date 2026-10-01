@@ -1,10 +1,10 @@
 // Администратор: заказы. Принять и отправить реквизиты для оплаты или отказать, если товара нет.
-import { $, formatPrice, formatDate, escapeHtml, pluralize, haptic, toast, storage, openLink } from "./core.js";
-import { state, api, errorMessage, useSupabase } from "./state.js";
-import { watchOrders } from "./supabase.js";
-import { refreshCatalog } from "./catalog.js";
-import { orderItemsHtml, paymentDetails } from "./cart.js";
-import { sheetBody, openSheet } from "./nav.js";
+import { $, formatPrice, formatDate, escapeHtml, pluralize, haptic, toast, storage, openLink } from "./core.js?v=20261001b";
+import { state, api, errorMessage, useSupabase } from "./state.js?v=20261001b";
+import { watchOrders } from "./supabase.js?v=20261001b";
+import { refreshCatalog } from "./catalog.js?v=20261001b";
+import { orderItemsHtml, paymentDetails } from "./cart.js?v=20261001b";
+import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
 const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", rejected: "Отказ" };
 let openForm = null; // { num, type: "accept" | "reject", text, note }

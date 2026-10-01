@@ -1,8 +1,8 @@
 // Общее состояние приложения и запросы к серверу.
-import { storage, telegram } from "./core.js";
-import { API_URL } from "./config.js";
-import { githubApi, githubPhotoUrl } from "./github.js";
-import { supabaseApi, supabaseEnabled } from "./supabase.js";
+import { storage, telegram } from "./core.js?v=20261001b";
+import { API_URL } from "./config.js?v=20261001b";
+import { githubApi, githubPhotoUrl } from "./github.js?v=20261001b";
+import { supabaseApi, supabaseEnabled } from "./supabase.js?v=20261001b";
 
 /** Есть ли сервер магазина. На GitHub Pages без API_URL его нет: только витрина и заказ сообщением менеджеру. */
 const isGitHubPages = location.hostname.endsWith(".github.io");
@@ -75,7 +75,7 @@ export const api = hasServer ? serverApi : { ...serverApi, ...githubApi, ...(use
 
 export function errorMessage(error) {
   return {
-    unauthorized: "Откройте магазин в Telegram.",
+    unauthorized: "Не удалось войти в базу заказов. Перезапустите магазин и повторите.",
     forbidden: hasServer ? "Нет прав на это действие. Войдите как администратор." : "Ключ GitHub не подходит или истёк. Войдите заново.",
     conflict: "Этот заказ уже обработан другим менеджером.",
     not_staff: "Нет прав на это действие. Обратитесь к директору.",

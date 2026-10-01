@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ТЕМП — мужская спортивная одежда</title>
+<link rel="stylesheet" href="css/app.css">
+<!-- Шрифты грузятся без блокировки: пока их нет, работает системный шрифт -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&family=Manrope:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+<!-- API мини-приложения Telegram -->
+<script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+<script type="module" src="js/main.js"></script>
+<link rel="modulepreload" href="js/config.js">
+<link rel="modulepreload" href="js/core.js">
+<link rel="modulepreload" href="js/data.js">
+<link rel="modulepreload" href="js/state.js">
+<link rel="modulepreload" href="js/catalog.js">
+<link rel="modulepreload" href="js/photos.js">
+<link rel="modulepreload" href="js/nav.js">
+<link rel="modulepreload" href="js/shop.js">
+<link rel="modulepreload" href="js/cart.js">
+<link rel="modulepreload" href="js/admin-products.js">
+<link rel="modulepreload" href="js/admin-orders.js">
+<link rel="modulepreload" href="js/github.js">
+<link rel="modulepreload" href="js/roles.js">
+<link rel="modulepreload" href="js/staff-access.js">
+<link rel="modulepreload" href="js/admin-staff.js">
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="hero-top">
+      <h1 class="brand">ТЕМП<span class="men">MEN</span></h1>
+      <div class="staff-badge" id="staffBadge" hidden></div>
+      <address class="shop" id="shopAddress"><span>Краснодар,<br>ул.&nbsp;Моя Выдумка&nbsp;67</span><span class="hours"><i>Ежедневно</i> <i>9:00–19:00</i></span></address>
+    </div>
+    <div class="lanes" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <p class="tag" id="greeting">Мужская одежда для бега, зала и улицы</p>
+    <div class="admin-bar" id="adminBar" hidden>
+      <button class="admin-btn" id="adminProductsButton">Управление товарами</button>
+      <button class="admin-btn" id="adminOrdersButton">Заказы</button>
+      <button class="admin-btn" id="adminStaffButton" hidden>Сотрудники</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Разделы">
+    <button class="tab" data-tab="cart" aria-pressed="false">Корзина<span id="cartTabCount"></span></button>
+    <button class="tab" data-tab="orders" aria-pressed="false">Мои заказы</button>
+    <button class="tab" data-tab="shop" aria-pressed="true">Товары</button>
+  </nav>
+  <div id="shopPage">
+    <nav class="cats" id="categories" aria-label="Категории"></nav>
+    <main class="grid" id="grid"></main>
+  </div>
+  <section class="page" id="cartPage" hidden></section>
+  <section class="page" id="ordersPage" hidden></section>
+  <footer class="foot"><button class="link" id="staffLink" hidden>Для сотрудников</button></footer>
+</div>
+
+<div class="cartbar" id="cartBar"><button id="cartBarButton"><span id="cartBarText">Корзина</span><span id="cartBarTotal"></span></button></div>
+
+<div class="scrim" id="scrim"></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <button class="close" id="closeSheet" aria-label="Закрыть">✕</button>
+  <div class="sheet-inner" id="sheetBody"></div>
+</section>
+<div class="toast" id="toast" role="status"></div>
+</body>
+</html>

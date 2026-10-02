@@ -2,11 +2,29 @@
 // Запросы анонимные (publishable key), а в каждом едет заголовок X-Telegram-Init-Data —
 // подписанные Telegram данные с ID пользователя. База сама проверяет подпись токеном бота
 // и по правилам RLS решает, кому что видно: покупателю — свои заказы, персоналу — все.
-// Библиотека supabase-js подключена тегом <script> в index.html (window.supabase).
+// Библиотеку supabase-js кладёт на сайт деплой (js/vendor/supabase.js, см. .github/workflows/deploy.yml);
+// если её там нет, она подгружается с CDN.
 import { telegram } from "./core.js?v=20261001b";
 import { SUPABASE_URL, SUPABASE_KEY } from "./config.js?v=20261001b";
 
 export const supabaseEnabled = Boolean(SUPABASE_URL && SUPABASE_KEY);
+const CDN_LIBRARY = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js";
+let libraryPromise = null;
+
+/** Библиотека: своя копия с сайта (подключена в index.html), а если её нет — с CDN */
+function loadLibrary() {
+  if (window.supabase?.createClient) return Promise.resolve(true);
+  libraryPromise ||= new Promise((resolve) => {
+    const done = (ok) => { clearTimeout(timer); if (!ok) libraryPromise = null; resolve(ok); };
+    const timer = setTimeout(() => done(false), 15000);
+    const script = document.createElement("script");
+    script.src = CDN_LIBRARY;
+    script.onload = () => done(Boolean(window.supabase?.createClient));
+    script.onerror = () => done(false);
+    document.head.appendChild(script);
+  });
+  return libraryPromise;
+}
 
 let client = null;
 let me = null;          // { telegram_id, username, role, topic, staff_topic }
@@ -32,12 +50,15 @@ const fail = (error) => { throw { code: error?.code === "42501" ? "not_staff" : 
 export function supabaseLogin() {
   if (me) return Promise.resolve(me);
   loginPromise ||= (async () => {
-    if (!window.supabase?.createClient) return fail_("no_library");    // не загрузился cdn.jsdelivr.net
+    if (!(await loadLibrary())) return fail_("no_library");             // не загрузилась ни своя копия, ни CDN
     const { data, error, status } = await db().rpc("tg_login");
     if (!error && data?.telegram_id) { loginError = null; return (me = data); }
     console.warn("Supabase tg_login:", status, error);
     if (error?.code === "PGRST202" || status === 404) return fail_("no_function"); // в базе нет tg_login
-    if (error?.code === "42501") return fail_("bad_signature");                    // база не приняла подпись
+    if (error?.code === "42501") {                                                 // база не приняла подпись
+      const reason = /tg:([a-z_]+)/.exec(error.message || "")?.[1];                // причину называет сама база
+      return fail_(reason ? `tg_${reason}` : "bad_signature");
+    }
     return fail_(status === 0 ? "network" : "server");
   })().catch((e) => { console.warn("Supabase tg_login:", e); return fail_("network"); })
     .finally(() => { loginPromise = null; });

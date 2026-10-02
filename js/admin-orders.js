@@ -44,7 +44,7 @@ function decisionFormHtml(o) {
       <textarea id="formText" maxlength="${accept ? 500 : 1000}" placeholder="${accept ? "Номер карты, банк и получатель. Или ссылка на оплату" : ""}">${escapeHtml(openForm.text)}</textarea></label>
     ${accept ? `<label class="field"><span>Комментарий для покупателя, если нужен</span>
       <textarea id="formNote" maxlength="500" placeholder="Например: отправим в течение дня после оплаты">${escapeHtml(openForm.note || "")}</textarea></label>`
-      : `<p class="adm-sub">Товар из заказа вернётся на склад.</p>`}
+      : useSupabase ? "" : `<p class="adm-sub">Товар из заказа вернётся на склад.</p>`}
     <p class="hint" id="formHint"></p>
     <div class="ord-actions"><button class="primary sm${accept ? "" : " danger"}" data-send="${o.num}">${accept ? "Отправить реквизиты" : "Отправить отказ"}</button>
       <button class="ghost" data-cancel>Отмена</button></div></div>`;

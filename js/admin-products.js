@@ -1,7 +1,7 @@
 // Администратор: список товаров, цвета/размеры/остатки, добавление и удаление товаров.
 import { $, formatPrice, escapeHtml, pluralize, haptic, toast, on } from "./core.js?v=20261001b";
 import { BASE_PRODUCTS, CATEGORIES } from "./data.js?v=20261001b";
-import { state, api, errorMessage, hasServer } from "./state.js?v=20261001b";
+import { state, api, errorMessage, hasServer, useSupabase } from "./state.js?v=20261001b";
 import { CATEGORY_NAMES, colorName, swatchBackground, refreshCatalog, originalPrice } from "./catalog.js?v=20261001b";
 import { productImage } from "./photos.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
@@ -22,7 +22,7 @@ async function runAction(action, successText) {
     await action();
     await refreshCatalog();
     haptic("success");
-    toast(hasServer ? successText : `${successText}. У покупателей — через 1–2 минуты`);
+    toast(hasServer || useSupabase ? successText : `${successText}. У покупателей — через 1–2 минуты`);
     return true;
   } catch (error) {
     toast(errorMessage(error));
@@ -53,7 +53,7 @@ export function openAdminProducts() {
     <h2 class="p-name">Товары в каталоге</h2>
     <p class="adm-sub">${state.catalogProducts.length} шт. «Изменить» — цена и скидка, цвета, размеры и количество на складе. «Удалить» — весь товар.</p>
     <button class="primary" id="addProduct">Добавить товар</button>
-    ${hasServer ? "" : `<p class="adm-sub" style="margin-top:10px">Изменения сохраняются в репозиторий GitHub, покупатели увидят их через 1–2 минуты.</p>`}
+    ${hasServer || useSupabase ? "" : `<p class="adm-sub" style="margin-top:10px">Изменения сохраняются в репозиторий GitHub, покупатели увидят их через 1–2 минуты.</p>`}
     ${state.catalogProducts.map((p) => productRow(p, `<span class="adm-btns">
       <button class="adm-del" data-edit="${p.id}">Изменить</button><button class="adm-del" data-delete="${p.id}">Удалить</button></span>`)).join("")}
     ${hidden.length ? `<p class="label">Удалённые из каталога</p><p class="adm-sub">Встроенные товары можно вернуть.</p>

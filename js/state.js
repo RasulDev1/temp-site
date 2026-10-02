@@ -2,7 +2,7 @@
 import { storage, telegram } from "./core.js?v=20261001b";
 import { API_URL } from "./config.js?v=20261001b";
 import { githubApi, githubPhotoUrl } from "./github.js?v=20261001b";
-import { supabaseApi, supabaseEnabled } from "./supabase.js?v=20261001b";
+import { supabaseApi, supabaseCatalogApi, supabaseEnabled } from "./supabase.js?v=20261001b";
 
 /** Есть ли сервер магазина. На GitHub Pages без API_URL его нет: только витрина и заказ сообщением менеджеру. */
 const isGitHubPages = location.hostname.endsWith(".github.io");
@@ -70,8 +70,9 @@ const serverApi = {
   setStock: (id, qty) => request("PUT", `/api/stock/${id}`, qty ? { qty } : { tracked: false }),
 };
 
-/** На GitHub Pages каталог и управление товарами работают через репозиторий, заказы — через Supabase */
-export const api = hasServer ? serverApi : { ...serverApi, ...githubApi, ...(useSupabase ? supabaseApi : {}) };
+/** На GitHub Pages: заказы через Supabase; каталог — тоже в Supabase, а без него — в репозитории (ключ GitHub) */
+// С Supabase каталог и фото тоже хранятся в базе: менять их может сотрудник по своему входу, без ключа GitHub
+export const api = hasServer ? serverApi : { ...serverApi, ...githubApi, ...(useSupabase ? { ...supabaseApi, ...supabaseCatalogApi } : {}) };
 
 export function errorMessage(error) {
   return {

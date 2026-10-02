@@ -181,7 +181,7 @@ function showOrderPlaced(num, note = "Когда менеджер провери
 }
 
 /* ---------- Мои заказы ---------- */
-const ORDER_STATUS = { new: "Ждёт подтверждения", accepted: "Принят, ждёт оплаты", paid: "Оплачен, готовим к отправке", rejected: "Отменён" };
+const ORDER_STATUS = { new: "Ждёт подтверждения", accepted: "Принят, ждёт оплаты", paid: "Оплачен, готовим к отправке", delivered: "Вручён", rejected: "Отменён" };
 export const paymentDetails = (order) => order.payDetails || order.payUrl || "";
 const isPaymentLink = (text) => /^https:\/\/\S+$/.test(text.trim());
 
@@ -212,9 +212,10 @@ function myOrderHtml(o) {
   </article>`;
 }
 
-/** Заказы покупателя по группам: принятые (в том числе оплаченные), отменённые и ещё не подтверждённые */
-const ORDER_GROUPS = [["accepted", "Принятые"], ["rejected", "Отменённые"], ["new", "Ждут подтверждения"]];
-const groupOf = (o) => (o.status === "rejected" ? "rejected" : o.status === "accepted" || o.status === "paid" ? "accepted" : "new");
+/** Заказы покупателя по группам: принятые (в том числе оплаченные), вручённые, отменённые и ещё не подтверждённые */
+const ORDER_GROUPS = [["accepted", "Принятые"], ["delivered", "Вручённые"], ["rejected", "Отменённые"], ["new", "Ждут подтверждения"]];
+const groupOf = (o) => (o.status === "rejected" || o.status === "delivered" ? o.status
+  : o.status === "accepted" || o.status === "paid" ? "accepted" : "new");
 let ordersGroup = null; // выбранная группа; null — первая непустая
 
 function myOrdersHtml() {

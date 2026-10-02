@@ -5,7 +5,7 @@ import { state, api, saveCart, findProduct, cartTotal, hasServer, useSupabase, h
 import { watchOrders } from "./supabase.js?v=20261001b";
 import { MANAGER_USERNAME } from "./config.js?v=20261001b";
 import { colorName, swatchBackground, stockLeft, refreshCatalog } from "./catalog.js?v=20261001b";
-import { productImage, applyRecolors } from "./photos.js?v=20261001b";
+import { productImage } from "./photos.js?v=20261001b";
 import { sheetBody, openSheet, closeSheet, setTab, openCart, syncMainButton } from "./nav.js?v=20261001b";
 import { chatButtonHtml, openChat, onChatEvent } from "./chat.js?v=20261001b";
 
@@ -33,7 +33,6 @@ export function renderCartPage() {
     }).join("")}
     <div class="total"><span>Итого</span><b>${formatPrice(cartTotal())}</b></div>
     <button class="primary browser-only" id="toCheckout">Оформить заказ</button>`;
-  applyRecolors(page, findProduct);
 }
 
 function changeQuantity(index, delta) {

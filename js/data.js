@@ -18,13 +18,12 @@ export const DELIVERY_METHODS = [
 const img = (file) => `img/products/${file}.jpg`;
 const SIZES = ["S", "M", "L", "XL", "XXL"];
 
-// photo — основное фото; colorPhotos — отдельные фото для цветов;
-// recolorMask — маска ткани: остальные цвета получаются перекраской основного фото.
+// photo — основное фото; colorPhotos — отдельные фото для цветов (без них у всех цветов одно фото).
 export const BASE_PRODUCTS = [
   { id: 1, category: "run", name: "Беговая футболка Airline", price: 2990, oldPrice: 3990, isNew: false,
     description: "Сетчатые вставки на спине, отводит влагу, светоотражающий логотип.",
-    colors: ["#7FA88A", "#0E2A47", "#E4E8EC"], sizes: SIZES, soldOutSizes: ["S"],
-    photo: img("1"), photoPosition: "40% 50%", photoAuthor: "Ketut Subiyanto", recolorMask: "img/masks/1.png" },
+    colors: ["#E4E8EC"], sizes: SIZES, soldOutSizes: ["S"],
+    photo: "1-pants.jpg", photoPosition: "55% 50%", photoAuthor: "Niko Twisty" },
   { id: 2, category: "street", name: "Спортивные штаны Fleece", price: 4290, isNew: true,
     description: "Плотный футер с начёсом, прямой свободный крой, широкая резинка с кулиской и боковые карманы. На фото все три цвета модели.",
     colors: ["#A7A9AB", "#3E3834", "#1B1B1F"], colorNames: { "#A7A9AB": "Серый меланж", "#3E3834": "Графит", "#1B1B1F": "Чёрный" },
@@ -60,6 +59,6 @@ export const BASE_PRODUCTS = [
     colors: ["#F2F2F0"], colorNames: { "#F2F2F0": "Белый" }, sizes: SIZES, photo: img("9"), photoPosition: "50% 38%", photoAuthor: "Ahmed Aziz" },
   { id: 10, category: "run", name: "Лонгслив компрессионный Pulse", price: 3490, isNew: true,
     description: "Облегающий крой, бесшовная вязка с зонами вентиляции. Держит мышцы на длинной дистанции и не натирает.",
-    colors: ["#E8392E", "#1B1B1F"], sizes: SIZES,
-    photo: img("10"), photoPosition: "25% 50%", photoAuthor: "Kampus Production", recolorMask: "img/masks/10.png" },
+    colors: ["#E4E8EC"], sizes: SIZES,
+    photo: "10-pants.jpg", photoPosition: "50% 40%", photoAuthor: "Gustavo Fring" },
 ];

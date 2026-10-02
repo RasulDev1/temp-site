@@ -3,7 +3,7 @@ import { $, formatPrice, haptic, toast, on, replayAnimation, reducedMotion } fro
 import { CATEGORIES } from "./data.js?v=20261001b";
 import { state, saveCart, findProduct } from "./state.js?v=20261001b";
 import { colorName, swatchBackground, stockLeft, isUnavailable, isSoldOut } from "./catalog.js?v=20261001b";
-import { productImage, swapImage, photoForColor, recolor } from "./photos.js?v=20261001b";
+import { productImage, swapImage, photoForColor } from "./photos.js?v=20261001b";
 import { sheetBody, openSheet, closeSheet, syncMainButton } from "./nav.js?v=20261001b";
 
 const tint = (color) => `color-mix(in srgb, ${color} 14%, var(--bg))`;
@@ -65,7 +65,6 @@ export function openProduct(id) {
     <p class="hint" id="hint"></p>
     <button class="primary browser-only" id="addToCart">Добавить в корзину · ${formatPrice(p.price)}</button>`;
 
-  if (p.recolorMask) p.colors.slice(1).forEach((c) => recolor(p, c)); // готовим цвета заранее — смена будет мгновенной
   sheetBody.onclick = (e) => {
     const color = e.target.closest("[data-color]")?.dataset.color;
     const size = e.target.closest("[data-size]:not(:disabled)")?.dataset.size;

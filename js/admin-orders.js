@@ -37,7 +37,9 @@ export async function loadAdminOrders() {
 function updateOrdersButton() {
   const n = newOrdersCount(), button = $("adminOrdersButton");
   const chats = state.adminOrders.filter((o) => hasUnread(o, "staff")).length; // заказы с непрочитанными сообщениями
-  button.textContent = (n ? `Заказы · ${n} ${pluralize(n, "новый", "новых", "новых")}` : "Заказы") + (chats ? ` · 💬 ${chats}` : "");
+  button.textContent = `Заказы${n ? ` · ${n}` : ""}${chats ? ` · 💬${chats}` : ""}`;
+  button.title = [n && `${n} ${pluralize(n, "новый заказ", "новых заказа", "новых заказов")}`,
+    chats && `${chats} ${pluralize(chats, "чат", "чата", "чатов")} с новыми сообщениями`].filter(Boolean).join(", ");
   button.classList.toggle("has-new", n + chats > 0);
 }
 
@@ -262,6 +264,14 @@ async function unarchive(button) {
   renderOrders();
 }
 
+/** Почему не получилось вручить — понятным текстом, чтобы было ясно, что чинить */
+function deliverError(error) {
+  if (error.code === "conflict") return "Заказ уже изменён другим сотрудником";
+  if (error.raw?.code === "23514") return "В базе нет статуса «Вручён»: запустите supabase-delivered.sql в Supabase";
+  if (error.code === "not_staff") return "Нет прав: войдите как сотрудник по ссылке …/staff.html";
+  return errorMessage(error);
+}
+
 /** «Вручить»: оплаченный заказ отдан покупателю и переходит во «Вручённые» */
 async function markDelivered(button) {
   button.disabled = true;
@@ -271,7 +281,7 @@ async function markDelivered(button) {
     haptic("success");
     toast(`Заказ №${button.dataset.deliver} вручён`);
   } catch (error) {
-    toast(error.code === "conflict" ? "Заказ уже изменён другим сотрудником" : errorMessage(error));
+    toast(deliverError(error));
   }
   await loadAdminOrders();
   renderOrders();

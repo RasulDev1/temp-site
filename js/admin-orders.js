@@ -7,7 +7,11 @@ import { orderItemsHtml, paymentDetails } from "./cart.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 import { chatButtonHtml, openChat, onChatEvent, hasUnread } from "./chat.js?v=20261001b";
 
-const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", rejected: "Отказ" };
+const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", rejected: "Отказ" };
+/** Разделы списка заказов */
+const STAFF_GROUPS = [["new", "Новые"], ["active", "В работе"], ["delivered", "Вручённые"], ["rejected", "Отказы"]];
+const staffGroupOf = (o) => (o.status === "accepted" || o.status === "paid" ? "active" : o.status);
+let staffGroup = null; // выбранный раздел; null — первый непустой
 let openForm = null; // { num, type: "accept" | "reject", text, note }
 let showArchived = false; // смотрим скрытые заказы
 let archived = [];        // скрытые заказы, когда их открыли
@@ -64,8 +68,9 @@ function decisionResultHtml(o) {
   if (o.status === "new") return "";
   return `<div class="ord-res">
     <p>${o.status === "rejected" ? `Отказ: «${escapeHtml(o.message)}»`
-      : `${o.status === "paid" ? "Оплачен" : "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
+      : `${{ paid: "Оплачен", delivered: "Оплачен и вручён" }[o.status] || "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
     ${o.status === "accepted" && api.markPaid ? `<div class="ord-actions"><button class="primary sm" data-paid="${o.num}">Оплата получена</button></div>` : ""}
+    ${o.status === "paid" && api.markDelivered ? `<div class="ord-actions"><button class="primary sm" data-deliver="${o.num}">Вручить</button></div>` : ""}
     <p class="adm-sub">${useSupabase ? "Покупатель видит статус и реквизиты во вкладке «Мои заказы»."
       : o.delivered ? "Сообщение доставлено покупателю в Telegram."
       : "Сообщение не доставлено: покупатель не разрешил боту писать ему. Напишите ему сами, контакты выше."}</p>
@@ -106,16 +111,24 @@ function renderOrders() {
     return;
   }
   const n = newOrdersCount();
+  const counts = Object.fromEntries(STAFF_GROUPS.map(([id]) => [id, state.adminOrders.filter((o) => staffGroupOf(o) === id).length]));
+  const groups = STAFF_GROUPS.filter(([id]) => counts[id]);
+  if (!counts[staffGroup]) staffGroup = groups[0]?.[0] || null;
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Заказы</h2>
     <p class="adm-sub">${state.adminOrders.length
       ? `${n ? `${n} ${pluralize(n, "новый заказ ждёт", "новых заказа ждут", "новых заказов ждут")} решения.` : "Новых заказов нет."} Принятый заказ — покупатель получает реквизиты для оплаты, отказ — сообщение, товар возвращается на склад.`
       : "Заказов пока нет. Когда покупатель оформит заказ, он появится здесь."}</p>
-    ${listToolsHtml()}${state.adminOrders.map(orderHtml).join("")}`;
+    ${listToolsHtml()}
+    ${groups.length > 1 ? `<div class="order-groups" role="tablist">${groups.map(([id, title]) =>
+      `<button class="chip" role="tab" data-staff-group="${id}" aria-pressed="${id === staffGroup}">${title} · ${counts[id]}</button>`).join("")}</div>` : ""}
+    ${state.adminOrders.filter((o) => staffGroupOf(o) === staffGroup).map(orderHtml).join("")}`;
 }
 
 export function openAdminOrders(focusNum) {
   openForm = null;
   showArchived = false;
+  const focused = focusNum && state.adminOrders.find((o) => o.num === focusNum);
+  if (focused) staffGroup = staffGroupOf(focused); // вернулись из чата — открываем раздел этого заказа
   renderOrders();
   sheetBody.onclick = onOrdersClick;
   openSheet("adminOrders");
@@ -137,6 +150,9 @@ async function onOrdersClick(e) {
   if (t.hasAttribute("data-show-active")) return switchList(false);
   if (t.dataset.unarchive) return unarchive(t);
   if (t.dataset.hide) return hideOne(t);
+  const group = t.closest("[data-staff-group]")?.dataset.staffGroup;
+  if (group) { if (group !== staffGroup) { haptic(); staffGroup = group; renderOrders(); } return; }
+  if (t.dataset.deliver) return markDelivered(t);
   if (t.dataset.accept) openForm = { num: Number(t.dataset.accept), type: "accept", text: storage.get("temp_last_pay", "") };
   else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(t.dataset.reject) };
   else if (t.hasAttribute("data-cancel")) openForm = null;
@@ -241,6 +257,21 @@ async function unarchive(button) {
   } catch (error) {
     button.disabled = false;
     return toast(errorMessage(error));
+  }
+  await loadAdminOrders();
+  renderOrders();
+}
+
+/** «Вручить»: оплаченный заказ отдан покупателю и переходит во «Вручённые» */
+async function markDelivered(button) {
+  button.disabled = true;
+  button.textContent = "Сохраняем…";
+  try {
+    await api.markDelivered(Number(button.dataset.deliver));
+    haptic("success");
+    toast(`Заказ №${button.dataset.deliver} вручён`);
+  } catch (error) {
+    toast(error.code === "conflict" ? "Заказ уже изменён другим сотрудником" : errorMessage(error));
   }
   await loadAdminOrders();
   renderOrders();

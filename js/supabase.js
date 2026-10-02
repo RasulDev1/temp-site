@@ -229,6 +229,100 @@ export const supabaseApi = {
   staffDelete: (id) => rpc("staff_delete", { p_id: id }),
 };
 
+/* ---------- Каталог в базе (supabase-catalog.sql): без ключей GitHub, изменения видны сразу ---------- */
+const PHOTO_BUCKET = "products";
+const EMPTY_CATALOG = { products: [], hidden: [], variants: {}, stock: {}, staff: [], prices: {}, order: [] };
+let catalogInDb = false; // каталог уже хранится в базе (иначе — первая загрузка из catalog/catalog.json)
+
+/** Опубликованный в репозитории каталог — им база заполняется при первом сохранении */
+async function repoCatalog() {
+  const response = await fetch(`catalog/catalog.json?v=${Date.now()}`, { cache: "no-store" }).catch(() => null);
+  return response?.ok ? response.json() : {};
+}
+
+async function readCatalog() {
+  if (!(await loadLibrary())) throw { code: "network" };
+  const { data, error } = await db().from("catalog_state").select("data,version").eq("id", 1).maybeSingle();
+  if (error) throw { code: error.code === "42P01" || error.code === "PGRST205" ? "no_catalog" : "server", raw: error };
+  return data || { data: {}, version: 0 };
+}
+
+/** Читает каталог из базы, применяет изменение и сохраняет. Если кто-то сохранил раньше — повтор. */
+async function updateCatalog(change) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const row = await readCatalog();
+    const base = row.version ? row.data : await repoCatalog(); // база ещё пустая — переносим каталог из репозитория
+    const catalog = { ...EMPTY_CATALOG, ...base };
+    change(catalog);
+    try {
+      await rpc("catalog_save", { p_data: catalog, p_version: row.version });
+      catalogInDb = true;
+      return catalog;
+    } catch (error) {
+      if (!/catalog:conflict/.test(error.raw?.message || "") || attempt === 2) {
+        throw { code: /catalog:forbidden/.test(error.raw?.message || "") ? "not_staff" : error.code, raw: error.raw };
+      }
+    }
+  }
+}
+
+const dataUrlToBlob = (dataUrl) => fetch(dataUrl).then((r) => r.blob());
+
+async function uploadPhoto(name, dataUrl) {
+  const { error } = await db().storage.from(PHOTO_BUCKET).upload(name, await dataUrlToBlob(dataUrl), { contentType: "image/jpeg" });
+  if (error) throw { code: "server", raw: error };
+  return db().storage.from(PHOTO_BUCKET).getPublicUrl(name).data.publicUrl;
+}
+
+async function deletePhoto(url) {
+  const name = String(url).split(`/object/public/${PHOTO_BUCKET}/`)[1];
+  if (name) await db().storage.from(PHOTO_BUCKET).remove([decodeURIComponent(name)]).catch(() => {});
+}
+
+/** Те же действия с каталогом, что у GitHub-версии (github.js), — модули товаров не замечают разницы */
+export const supabaseCatalogApi = {
+  async catalog() {
+    try {
+      const row = await readCatalog();
+      catalogInDb = row.version > 0;
+      if (catalogInDb) return row.data;
+    } catch {}
+    return repoCatalog(); // база ещё не настроена или пуста — показываем каталог из репозитория
+  },
+  setHiddenProducts: (hidden) => updateCatalog((c) => { c.hidden = hidden; }),
+  setVariants: (id, variants) => updateCatalog((c) => {
+    const empty = !variants.offColors.length && !variants.offSizes.length && !variants.offCombos.length;
+    if (empty) delete c.variants[id]; else c.variants[id] = variants;
+  }),
+  setPrice: (id, value) => updateCatalog((c) => {
+    c.prices ||= {};
+    if (value) c.prices[id] = { price: value.price, old: value.old || 0 }; else delete c.prices[id];
+  }),
+  setStock: (id, qty) => updateCatalog((c) => { if (qty) c.stock[id] = { qty }; else delete c.stock[id]; }),
+  /** Порядок карточек в каталоге: список id товаров */
+  setOrder: (order) => updateCatalog((c) => { c.order = order; }),
+  async createProduct(product) {
+    const num = Date.now();
+    const colors = [];
+    for (const [i, color] of product.colors.entries()) {
+      colors.push({ ...color, image: await uploadPhoto(`${num}-${i}.jpg`, color.image) });
+    }
+    return updateCatalog((c) => { c.products.push({ num, createdAt: num, ...product, colors }); });
+  },
+  async deleteProduct(id) {
+    let removed;
+    await updateCatalog((c) => {
+      removed = c.products.find((p) => p.num === id);
+      c.products = c.products.filter((p) => p.num !== id);
+      delete c.variants[id];
+      delete c.stock[id];
+      if (c.prices) delete c.prices[id];
+      if (c.order) c.order = c.order.filter((x) => x !== id);
+    });
+    for (const color of removed?.colors || []) await deletePhoto(color.image);
+  },
+};
+
 /** Живые обновления заказов. База шлёт в канал только номер заказа и действие (insert/update);
  *  сами данные перечитываются обычным запросом, где их защищает RLS.
  *  kind: "user" — свои заказы, "staff" — все заказы (только персоналу). onReady — после (пере)подключения. */

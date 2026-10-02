@@ -28,3 +28,11 @@
 .staff-logout { border: 0; background: none; padding: 2px 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); text-decoration: underline; cursor: pointer; }
 .staff-logout[data-armed] { color: var(--danger); }
 .staff-link { overflow-wrap: anywhere; user-select: all; }
+
+/* ---------- Порядок карточек: сотрудник перетаскивает карточки в каталоге (js/sort.js) ---------- */
+.sort-hint { display: none; }
+.staff-mode .sort-hint { display: block; margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.staff-mode .grid .card { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.drag-ghost { position: fixed; z-index: 70; margin: 0; pointer-events: none; opacity: .95; transition: none !important; animation: none !important;
+  box-shadow: 0 16px 36px rgba(5, 15, 25, .28); border-radius: 16px; background: var(--bg); }
+.drag-placeholder { opacity: .25; }

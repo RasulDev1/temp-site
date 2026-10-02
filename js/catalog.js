@@ -5,6 +5,7 @@ import { state, api, saveCart, imageUrl } from "./state.js?v=20261001b";
 
 export const CATEGORY_NAMES = Object.fromEntries(CATEGORIES);
 let priceOverrides = {}; // id → { price, old }: цены и скидки, которые поменял администратор
+let productOrder = [];   // порядок карточек, который задали сотрудники перетаскиванием (id товаров)
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 export const colorName = (product, color) => product.colorNames?.[color] || COLOR_NAMES[color] || color;
@@ -93,12 +94,26 @@ export function applyCatalog(data) {
   state.stock = data.stock || {};
   state.staff = Array.isArray(data.staff) ? data.staff : [];
   priceOverrides = data.prices && typeof data.prices === "object" ? data.prices : {};
+  productOrder = Array.isArray(data.order) ? data.order.map(Number) : [];
   state.catalogLoaded = true;
   rebuildCatalog();
 }
 
+/** Товары по порядку, заданному сотрудниками; новые и не упорядоченные — в конце, как были */
+function sortByOrder(products) {
+  const position = new Map(productOrder.map((id, i) => [id, i]));
+  return products.map((p, i) => [p, position.get(p.id) ?? productOrder.length + i])
+    .sort((a, b) => a[1] - b[1]).map(([p]) => p);
+}
+
+/** Сразу показывает новый порядок (сохраняется отдельно через api.setOrder) */
+export function setProductOrder(order) {
+  productOrder = order.map(Number);
+  rebuildCatalog();
+}
+
 export function rebuildCatalog() {
-  state.catalogProducts = BASE_PRODUCTS.filter((p) => !state.hiddenProductIds.includes(p.id)).concat(state.customProducts).map(withPrice);
+  state.catalogProducts = sortByOrder(BASE_PRODUCTS.filter((p) => !state.hiddenProductIds.includes(p.id)).concat(state.customProducts).map(withPrice));
   state.products = state.catalogProducts.map(forCustomers).filter(Boolean);
   if (state.catalogLoaded) fitCartToCatalog();
   emit("catalog");

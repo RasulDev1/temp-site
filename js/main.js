@@ -13,6 +13,7 @@ import { initRoles } from "./roles.js?v=20261001b";
 import { openStaffAccess } from "./staff-access.js?v=20261001b";
 import { initStaffManager } from "./admin-staff.js?v=20261001b";
 import { openStaffLogin } from "./staff-login.js?v=20261001b";
+import { initProductSorting } from "./sort.js?v=20261001b";
 
 document.documentElement.classList.toggle("in-telegram", inTelegram);
 setupTelegram();
@@ -34,7 +35,8 @@ function setStaffMode(on) {
 // GitHub Pages: сотрудники входят по ссылке …/staff.html (или ?staff) логином и паролем,
 // все остальные — покупатели. Изменения в товарах сохраняются в репозиторий ключом доступа на устройстве.
 if (!hasServer) {
-  const withKey = (open) => (hasGitHubKey() ? open() : openStaffAccess("Чтобы сохранять изменения в товарах, добавьте на этом устройстве ключ доступа."));
+  // С Supabase товары хранятся в базе — ключ GitHub не нужен, хватает входа сотрудника
+  const withKey = (open) => (useSupabase || hasGitHubKey() ? open() : openStaffAccess("Чтобы сохранять изменения в товарах, добавьте на этом устройстве ключ доступа."));
   let staffToolsReady = false, ordersReady = false;
   initRoles(({ role }) => {
     state.isAdmin = role !== "customer";
@@ -47,6 +49,7 @@ if (!hasServer) {
       staffToolsReady = true;
       initAdminProducts(withKey);
       initStaffManager();
+      if (useSupabase) initProductSorting(); // карточки товаров можно перетаскивать
     }
     if (state.isAdmin && useSupabase && !ordersReady) {
       ordersReady = true;

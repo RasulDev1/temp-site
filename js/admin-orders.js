@@ -8,10 +8,12 @@ import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 import { chatButtonHtml, openChat, onChatEvent, hasUnread } from "./chat.js?v=20261001b";
 
 const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", rejected: "Отказ" };
-/** Разделы списка заказов */
-const STAFF_GROUPS = [["new", "Новые"], ["active", "В работе"], ["delivered", "Вручённые"], ["rejected", "Отказы"]];
-const staffGroupOf = (o) => (o.status === "accepted" || o.status === "paid" ? "active" : o.status);
-let staffGroup = null; // выбранный раздел; null — первый непустой
+/** Вкладки списка заказов. «Новые» видны, только когда есть заказы, которые нужно принять или отклонить. */
+const STAFF_GROUPS = [["new", "Новые"], ["rejected", "Отменённые"], ["paid", "Принятые"], ["accepted", "Ожидают оплаты"], ["delivered", "Вручённые"]];
+const GROUP_EMPTY = { rejected: "Отменённых заказов нет.", paid: "Оплаченных заказов, ждущих вручения, нет.",
+  accepted: "Заказов, ожидающих оплаты, нет.", delivered: "Вручённых заказов нет." };
+const staffGroupOf = (o) => o.status;
+let staffGroup = null; // выбранная вкладка; null — выбрать самую нужную
 let openForm = null; // { num, type: "accept" | "reject", text, note }
 let showArchived = false; // смотрим скрытые заказы
 let archived = [];        // скрытые заказы, когда их открыли
@@ -114,16 +116,18 @@ function renderOrders() {
   }
   const n = newOrdersCount();
   const counts = Object.fromEntries(STAFF_GROUPS.map(([id]) => [id, state.adminOrders.filter((o) => staffGroupOf(o) === id).length]));
-  const groups = STAFF_GROUPS.filter(([id]) => counts[id]);
-  if (!counts[staffGroup]) staffGroup = groups[0]?.[0] || null;
+  const groups = STAFF_GROUPS.filter(([id]) => id !== "new" || counts.new);
+  if (!groups.some(([id]) => id === staffGroup)) // по умолчанию: новые, иначе первая непустая вкладка
+    staffGroup = counts.new ? "new" : groups.find(([id]) => counts[id])?.[0] || "paid";
+  const list = state.adminOrders.filter((o) => staffGroupOf(o) === staffGroup);
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Заказы</h2>
     <p class="adm-sub">${state.adminOrders.length
       ? `${n ? `${n} ${pluralize(n, "новый заказ ждёт", "новых заказа ждут", "новых заказов ждут")} решения.` : "Новых заказов нет."} Принятый заказ — покупатель получает реквизиты для оплаты, отказ — сообщение, товар возвращается на склад.`
       : "Заказов пока нет. Когда покупатель оформит заказ, он появится здесь."}</p>
     ${listToolsHtml()}
-    ${groups.length > 1 ? `<div class="order-groups" role="tablist">${groups.map(([id, title]) =>
-      `<button class="chip" role="tab" data-staff-group="${id}" aria-pressed="${id === staffGroup}">${title} · ${counts[id]}</button>`).join("")}</div>` : ""}
-    ${state.adminOrders.filter((o) => staffGroupOf(o) === staffGroup).map(orderHtml).join("")}`;
+    ${state.adminOrders.length ? `<div class="order-groups" role="tablist">${groups.map(([id, title]) =>
+      `<button class="chip" role="tab" data-staff-group="${id}" aria-pressed="${id === staffGroup}">${title} · ${counts[id]}</button>`).join("")}</div>
+    ${list.length ? list.map(orderHtml).join("") : `<p class="adm-sub" style="margin-top:12px">${GROUP_EMPTY[staffGroup] || ""}</p>`}` : ""}`;
 }
 
 export function openAdminOrders(focusNum) {

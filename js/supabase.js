@@ -4,7 +4,7 @@
 // и по правилам RLS решает, кому что видно: покупателю — свои заказы, персоналу — все.
 // Библиотеку supabase-js кладёт на сайт деплой (js/vendor/supabase.js, см. .github/workflows/deploy.yml);
 // если её там нет, она подгружается с CDN.
-import { telegram } from "./core.js?v=20261001b";
+import { telegram, storage } from "./core.js?v=20261001b";
 import { SUPABASE_URL, SUPABASE_KEY } from "./config.js?v=20261001b";
 
 export const supabaseEnabled = Boolean(SUPABASE_URL && SUPABASE_KEY);
@@ -33,10 +33,18 @@ let loginError = null;  // почему не удалось войти — по�
 let archiveReady = false; // в базе настроены скрытые заказы (supabase-archive.sql)
 export const supabaseLoginError = () => loginError;
 
+/* Вход сотрудника по логину и паролю (supabase-staff.sql). База выдаёт токен сессии на 30 дней,
+   он хранится на устройстве и уходит в заголовке X-Staff-Token — по нему база даёт права менеджера или директора. */
+const STAFF_TOKEN_KEY = "temp_staff_token";
+let staffToken = storage.get(STAFF_TOKEN_KEY, "");
+let staffSession = null; // { name, login, role: "manager" | "admin", staff_topic }
+
 function db() {
   if (client) return client;
   if (!window.supabase?.createClient) throw { code: "server" };
-  const headers = telegram?.initData ? { "X-Telegram-Init-Data": telegram.initData } : {};
+  const headers = {};
+  if (telegram?.initData) headers["X-Telegram-Init-Data"] = telegram.initData;
+  if (staffToken) headers["X-Staff-Token"] = staffToken;
   client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { headers }, // заголовок добавляется ко всем запросам сразу
@@ -66,6 +74,49 @@ export function supabaseLogin() {
   return loginPromise;
 }
 function fail_(reason) { loginError = reason; return null; }
+
+/** Вызов функции базы; ошибка — { code }: причина из базы (staff:…), no_function, network или server */
+async function rpc(name, args) {
+  if (!(await loadLibrary())) throw { code: "network" };
+  const { data, error, status } = await db().rpc(name, args);
+  if (!error) return data;
+  const reason = /staff:([a-z_]+)/.exec(error.message || "")?.[1];
+  throw { code: reason || (error.code === "PGRST202" || status === 404 ? "no_function" : status === 0 ? "network" : "server"), raw: error };
+}
+
+function forgetStaff() {
+  staffToken = "";
+  staffSession = null;
+  storage.set(STAFF_TOKEN_KEY, "");
+  client = null; // следующий запрос — уже без токена
+}
+
+/** Вход сотрудника. Ошибки: bad_credentials, locked, no_function, network. */
+export async function staffLogin(login, password) {
+  const data = await rpc("staff_login", { p_login: login, p_password: password });
+  if (data?.error || !data?.token) throw { code: data?.error || "server" };
+  staffToken = data.token;
+  storage.set(STAFF_TOKEN_KEY, staffToken);
+  client = null; // следующие запросы — уже с токеном
+  return (staffSession = { name: data.name, login: data.login, role: data.role, staff_topic: data.staff_topic });
+}
+
+/** Сохранённый вход ещё действует? null — нет (истёк, удалён директором, пароль сменён). */
+export async function staffRestore() {
+  if (!staffToken) return null;
+  try {
+    const data = await rpc("staff_me");
+    if (!data) { forgetStaff(); return null; }
+    return (staffSession = data);
+  } catch {
+    return null; // нет связи — токен не трогаем, попробуем при следующем запуске
+  }
+}
+
+export async function staffLogout() {
+  try { await rpc("staff_logout"); } catch {}
+  forgetStaff();
+}
 
 /* В базе статусы new · awaiting_payment · paid · delivered · cancelled; в интерфейсе — new · accepted · paid · delivered · rejected */
 const STATUS = { awaiting_payment: "accepted", cancelled: "rejected" };
@@ -119,7 +170,6 @@ export const supabaseApi = {
   },
   /** archived — скрытые заказы. Без настроенной очистки (supabase-archive.sql) — все заказы, как раньше. */
   async adminOrders(archived = false) {
-    await supabaseLogin();
     const query = (table) => db().from(table).select("*").order("id", { ascending: false }).limit(200);
     let { data, error } = await query(archived ? "orders_archived" : "orders_active");
     archiveReady = !error;
@@ -160,7 +210,8 @@ export const supabaseApi = {
     return data;
   },
   async sendChatMessage(num, text, file) {
-    if (!(await supabaseLogin())) throw { code: "unauthorized", reason: loginError };
+    // сотрудник пишет по своему входу; покупатель — по подписи Telegram
+    if (!staffSession && !(await supabaseLogin())) throw { code: "unauthorized", reason: loginError };
     // отправителя, время и «менеджер или покупатель» ставит сама база
     const { error } = await db().from("order_messages").insert({
       order_id: num, body: text || null,
@@ -172,25 +223,17 @@ export const supabaseApi = {
       || (error.code === "23514" || error.code === "54000" ? "too_large" : "server"), raw: error };
   },
 
-  /** Роль в базе: директор назначает менеджеров в «Сотрудниках» — доступ к заказам меняется здесь */
-  async setRole(telegramId, role) {
-    const user = await supabaseLogin();
-    if (!user) throw { code: "unauthorized" };
-    if (Number(telegramId) === Number(user.telegram_id)) return; // свою роль не меняем
-    const { data, error } = await db().from("users").update({ role }).eq("telegram_id", telegramId).select("telegram_id");
-    if (error) fail(error);
-    if (data.length || role === "user") return;
-    const insert = await db().from("users").insert({ telegram_id: telegramId, role }); // ещё не открывал магазин — заводим заранее
-    if (insert.error) fail(insert.error);
-  },
+  /* ---------- «Сотрудники»: аккаунты с логином и паролем (только директор) ---------- */
+  staffList: () => rpc("staff_list"),
+  staffSave: (id, name, login, password) => rpc("staff_save", { p_id: id || null, p_name: name, p_login: login, p_password: password || null }),
+  staffDelete: (id) => rpc("staff_delete", { p_id: id }),
 };
 
 /** Живые обновления заказов. База шлёт в канал только номер заказа и действие (insert/update);
  *  сами данные перечитываются обычным запросом, где их защищает RLS.
  *  kind: "user" — свои заказы, "staff" — все заказы (только персоналу). onReady — после (пере)подключения. */
 export async function watchOrders(kind, onChange, onReady) {
-  const user = await supabaseLogin();
-  const topic = kind === "staff" ? user?.staff_topic : user?.topic;
+  const topic = kind === "staff" ? staffSession?.staff_topic : (await supabaseLogin())?.topic;
   if (!topic) return;
   db().channel(topic)
     .on("broadcast", { event: "changed" }, ({ payload }) => onChange(payload || {}))

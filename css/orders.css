@@ -11,3 +11,6 @@
 
 /* ---------- «Мои заказы» у покупателя: принятые / отменённые / ждут подтверждения (js/cart.js) ---------- */
 .order-groups { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0 6px; }
+
+/* Статус «Вручён» */
+.st-delivered .ord-st { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); }

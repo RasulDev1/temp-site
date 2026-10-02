@@ -1,7 +1,7 @@
 // Точка входа: показываем встроенный каталог сразу, остальное догружаем с сервера.
 import { $, telegram, inTelegram, setupTelegram, emit } from "./core.js?v=20261001b";
 import { state, api, hasServer, useSupabase } from "./state.js?v=20261001b";
-import { supabaseLogin } from "./supabase.js?v=20261001b";
+import { staffRestore } from "./supabase.js?v=20261001b";
 import { rebuildCatalog, refreshCatalog } from "./catalog.js?v=20261001b";
 import { initNavigation, syncMainButton, setTab } from "./nav.js?v=20261001b";
 import { initShop } from "./shop.js?v=20261001b";
@@ -12,6 +12,7 @@ import { hasGitHubKey } from "./github.js?v=20261001b";
 import { initRoles } from "./roles.js?v=20261001b";
 import { openStaffAccess } from "./staff-access.js?v=20261001b";
 import { initStaffManager } from "./admin-staff.js?v=20261001b";
+import { openStaffLogin } from "./staff-login.js?v=20261001b";
 
 document.documentElement.classList.toggle("in-telegram", inTelegram);
 setupTelegram();
@@ -30,12 +31,10 @@ function setStaffMode(on) {
   syncMainButton();
 }
 
-// GitHub Pages: роли по Telegram ID — директор (config.js), менеджеры (назначает директор), покупатели.
-// Сохранять изменения можно только с ключом доступа на устройстве.
+// GitHub Pages: сотрудники входят по ссылке …/staff.html (или ?staff) логином и паролем,
+// все остальные — покупатели. Изменения в товарах сохраняются в репозиторий ключом доступа на устройстве.
 if (!hasServer) {
-  $("staffLink").hidden = false;
-  $("staffLink").onclick = () => openStaffAccess();
-  const withKey = (open) => (hasGitHubKey() ? open() : openStaffAccess("Чтобы сохранять изменения, добавьте на этом устройстве ключ доступа."));
+  const withKey = (open) => (hasGitHubKey() ? open() : openStaffAccess("Чтобы сохранять изменения в товарах, добавьте на этом устройстве ключ доступа."));
   let staffToolsReady = false, ordersReady = false;
   initRoles(({ role }) => {
     state.isAdmin = role !== "customer";
@@ -47,7 +46,7 @@ if (!hasServer) {
     if (state.isAdmin && !staffToolsReady) {
       staffToolsReady = true;
       initAdminProducts(withKey);
-      initStaffManager(withKey);
+      initStaffManager();
     }
     if (state.isAdmin && useSupabase && !ordersReady) {
       ordersReady = true;
@@ -56,12 +55,13 @@ if (!hasServer) {
       if (focusOrder) openAdminOrders(focusOrder);
     }
   });
-  // Supabase: база проверяет подпись Telegram и сообщает роль (менеджер, админ) — она добавляется к роли из config.js
-  if (useSupabase) supabaseLogin().then((me) => {
-    if (!me) return;
-    state.dbRole = me.role;
-    emit("dbrole");
+  // Сохранённый вход сотрудника на этом устройстве; по ссылке для сотрудников без входа — форма входа
+  const wantsStaffLogin = new URLSearchParams(location.search).has("staff");
+  if (useSupabase) staffRestore().then((session) => {
+    if (session) { state.staffSession = session; emit("staffrole"); }
+    else if (wantsStaffLogin) openStaffLogin();
   });
+  else if (wantsStaffLogin) openStaffLogin();
 }
 
 // Кнопки администратора — только если сервер подтвердил права по подписи Telegram

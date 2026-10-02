@@ -23,3 +23,8 @@
   color: var(--ink); background: transparent; font-variant-numeric: tabular-nums; }
 .staff-mode .admin-btn:active { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .staff-mode .admin-btn.has-new { background: var(--accent); color: var(--accent-ink); border: 0; }
+
+/* ---------- Вход сотрудника: «Выйти» в плашке с ФИО, ссылка для входа в «Сотрудниках» ---------- */
+.staff-logout { border: 0; background: none; padding: 2px 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); text-decoration: underline; cursor: pointer; }
+.staff-logout[data-armed] { color: var(--danger); }
+.staff-link { overflow-wrap: anywhere; user-select: all; }

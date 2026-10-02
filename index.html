@@ -33,6 +33,7 @@
 <link rel="modulepreload" href="js/admin-staff.js?v=20261001b">
 <link rel="modulepreload" href="js/supabase.js?v=20261001b">
 <link rel="modulepreload" href="js/chat.js?v=20261001b">
+<link rel="modulepreload" href="js/staff-login.js?v=20261001b">
 </head>
 <body>
 <div class="wrap">
@@ -45,7 +46,7 @@
     <div class="lanes" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
     <p class="tag" id="greeting">Мужская одежда для бега, зала и улицы</p>
     <div class="admin-bar" id="adminBar" hidden>
-      <button class="admin-btn" id="adminProductsButton">Управление товарами</button>
+      <button class="admin-btn" id="adminProductsButton">Товары</button>
       <button class="admin-btn" id="adminOrdersButton">Заказы</button>
       <button class="admin-btn" id="adminStaffButton" hidden>Сотрудники</button>
     </div>
@@ -62,7 +63,6 @@
   </div>
   <section class="page" id="cartPage" hidden></section>
   <section class="page" id="ordersPage" hidden></section>
-  <footer class="foot"><button class="link" id="staffLink" hidden>Для сотрудников</button></footer>
 </div>
 
 <div class="cartbar" id="cartBar"><button id="cartBarButton"><span id="cartBarText">Корзина</span><span id="cartBarTotal"></span></button></div>

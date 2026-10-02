@@ -3,7 +3,7 @@ import { $, telegram, inTelegram, setupTelegram, emit } from "./core.js?v=202610
 import { state, api, hasServer, useSupabase } from "./state.js?v=20261001b";
 import { supabaseLogin } from "./supabase.js?v=20261001b";
 import { rebuildCatalog, refreshCatalog } from "./catalog.js?v=20261001b";
-import { initNavigation, syncMainButton } from "./nav.js?v=20261001b";
+import { initNavigation, syncMainButton, setTab } from "./nav.js?v=20261001b";
 import { initShop } from "./shop.js?v=20261001b";
 import { initCart } from "./cart.js?v=20261001b";
 import { initAdminProducts } from "./admin-products.js?v=20261001b";
@@ -23,6 +23,13 @@ syncMainButton();
 refreshCatalog();   // добавленные товары, остатки, скрытые позиции
 document.addEventListener("visibilitychange", () => !document.hidden && refreshCatalog());
 
+/** Режим сотрудника: вместо вкладок покупателя (корзина, мои заказы, товары) — кнопки сотрудника, без корзины */
+function setStaffMode(on) {
+  document.documentElement.classList.toggle("staff-mode", on);
+  if (on && state.tab !== "shop") setTab("shop");
+  syncMainButton();
+}
+
 // GitHub Pages: роли по Telegram ID — директор (config.js), менеджеры (назначает директор), покупатели.
 // Сохранять изменения можно только с ключом доступа на устройстве.
 if (!hasServer) {
@@ -36,6 +43,7 @@ if (!hasServer) {
     // С Supabase заказы видны в «Заказах» (ключ GitHub не нужен); без него приходят в Telegram сообщениями
     $("adminOrdersButton").hidden = !useSupabase;
     $("adminStaffButton").hidden = role !== "director";
+    setStaffMode(state.isAdmin);
     if (state.isAdmin && !staffToolsReady) {
       staffToolsReady = true;
       initAdminProducts(withKey);
@@ -62,6 +70,7 @@ if (hasServer && telegram?.initData) {
     if (!isAdmin) return;
     state.isAdmin = true;
     $("adminBar").hidden = false;
+    setStaffMode(true);
     initAdminProducts();
     initAdminOrders();
     // Кнопка «Открыть заказ» в уведомлении бота ведёт сюда с ?order=номер

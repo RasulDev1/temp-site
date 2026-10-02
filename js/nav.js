@@ -62,13 +62,14 @@ function setMainButton(text, handler) {
 export function syncMainButton() {
   const count = cartCount(), total = formatPrice(cartTotal());
   const byView = { product: ["Добавить в корзину", addSelectedToCart], checkout: ["Подтвердить заказ", placeOrder] };
-  if (state.view) setMainButton(...(byView[state.view] || [null]));
+  if (state.isAdmin) setMainButton(null); // сотруднику корзина не нужна
+  else if (state.view) setMainButton(...(byView[state.view] || [null]));
   else if (state.tab === "cart") setMainButton(count ? `Оформить заказ · ${total}` : null, openCheckout);
   else if (state.tab === "shop") setMainButton(count ? `Корзина · ${count} шт · ${total}` : null, openCart);
   else setMainButton(null);
 
   $("cartTabCount").textContent = count ? ` · ${count}` : "";
-  $("cartBar").classList.toggle("show", !inTelegram && !state.view && state.tab === "shop" && count > 0);
+  $("cartBar").classList.toggle("show", !inTelegram && !state.isAdmin && !state.view && state.tab === "shop" && count > 0);
   $("cartBarText").textContent = `Корзина · ${count} шт`;
   $("cartBarTotal").textContent = total;
 }

@@ -1,105 +1,123 @@
-// Директор назначает менеджеров: Telegram ID, ФИО и должность.
-import { $, escapeHtml, haptic, toast, on } from "./core.js?v=20261001b";
-import { state, api, errorMessage } from "./state.js?v=20261001b";
-import { refreshCatalog } from "./catalog.js?v=20261001b";
-import { keyInstructions } from "./staff-access.js?v=20261001b";
+// «Сотрудники» (только директор): ФИО, логин и пароль. Сотрудник входит по ссылке …/staff.html.
+// Пароли хранятся в базе только в виде хеша — посмотреть их нельзя, можно задать новый.
+import { $, escapeHtml, haptic, toast, copyToClipboard } from "./core.js?v=20261001b";
+import { state, api } from "./state.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
-let editingId = null; // Telegram ID редактируемого менеджера; 0 — новый
+let accounts = [];
+let editing = null;   // null — список, 0 — новый сотрудник, иначе id редактируемого
+let loadError = "";
 
-/** Supabase: доступ к заказам — по роли в базе. Назначили менеджера — роль manager, сняли — user. */
-async function syncDatabaseRoles(before, after) {
-  if (!api.setRole) return true;
-  const was = new Set(before.map((m) => m.telegramId)), now = new Set(after.map((m) => m.telegramId));
-  try {
-    for (const id of now) if (!was.has(id)) await api.setRole(id, "manager");
-    for (const id of was) if (!now.has(id)) await api.setRole(id, "user");
-    return true;
-  } catch {
-    return false;
-  }
-}
+const STAFF_ERRORS = {
+  bad_name: "Впишите ФИО",
+  bad_login: "Логин: 3–32 символа — латинские буквы, цифры, точка, дефис или _",
+  short_password: "Пароль — не короче 8 символов",
+  login_taken: "Такой логин уже занят",
+  forbidden: "Управлять сотрудниками может только директор",
+  self: "Свой аккаунт удалить нельзя",
+  no_function: "Вход по паролю не настроен: в Supabase нужно запустить supabase-staff.sql",
+  network: "Нет связи с базой. Проверьте интернет и повторите.",
+};
+const staffError = (error) => STAFF_ERRORS[error?.code] || "Не удалось сохранить. Повторите через минуту.";
 
-async function saveStaff(staff, successText) {
-  try {
-    const before = state.staff;
-    await api.setStaff(staff);
-    await refreshCatalog();
-    const synced = await syncDatabaseRoles(before, staff);
-    haptic("success");
-    toast(synced ? `${successText}. У сотрудника — через 1–2 минуты`
-      : `${successText}, но доступ к заказам не изменён: в базе Supabase у вас нет роли администратора`);
-    return true;
-  } catch (error) {
-    toast(errorMessage(error));
-    return false;
-  }
-}
+/** Ссылка для входа сотрудников — рядом с сайтом магазина */
+const staffLink = () => new URL("staff.html", location.href.split(/[?#]/)[0]).href;
 
-function managerForm(m = {}) {
-  return `<div class="ord" id="managerForm">
-    <label class="field"><span>Telegram ID</span><input id="managerId" inputmode="numeric" value="${m.telegramId || ""}" placeholder="Например, 123456789"></label>
-    <label class="field"><span>ФИО</span><input id="managerName" maxlength="80" value="${escapeHtml(m.name || "")}" placeholder="Петров Пётр Петрович"></label>
-    <label class="field"><span>Должность</span><input id="managerPosition" maxlength="40" value="${escapeHtml(m.position || "Менеджер")}"></label>
+function accountForm(a = {}) {
+  const isNew = !a.id;
+  return `<div class="ord" id="staffForm">
+    <label class="field"><span>ФИО</span><input id="staffName" maxlength="80" value="${escapeHtml(a.name || "")}" placeholder="Петров Пётр Петрович"></label>
+    <label class="field"><span>Логин</span><input id="staffLogin" maxlength="32" autocapitalize="none" autocorrect="off" spellcheck="false"
+      value="${escapeHtml(a.login || "")}" placeholder="Например, petrov"></label>
+    <label class="field"><span>Пароль</span><input id="staffPass" autocomplete="new-password" autocapitalize="none" spellcheck="false"
+      placeholder="${isNew ? "Не короче 8 символов" : "Оставьте пустым, чтобы не менять"}"></label>
     <p class="hint" id="hint"></p>
-    <div class="ord-actions"><button class="primary sm" id="saveManager">${m.telegramId ? "Сохранить" : "Назначить"}</button><button class="ghost" id="cancelManager">Отмена</button></div>
+    <div class="ord-actions"><button class="primary sm" id="saveStaff">${isNew ? "Добавить" : "Сохранить"}</button><button class="ghost" id="cancelStaff">Отмена</button></div>
   </div>`;
 }
 
-const managerCard = (m) => editingId === m.telegramId ? managerForm(m) : `<div class="adm-row staff-row">
-  <div><p class="t">${escapeHtml(m.name)}</p><p class="s">${escapeHtml(m.position)} · ID ${m.telegramId}</p></div>
-  <span class="adm-btns"><button class="adm-del" data-edit-manager="${m.telegramId}">Изменить</button>
-    <button class="adm-del" data-remove-manager="${m.telegramId}">Снять</button></span></div>`;
+const accountCard = (a) => editing === a.id ? accountForm(a) : `<div class="adm-row staff-row">
+  <div><p class="t">${escapeHtml(a.name)}${a.me ? " (вы)" : ""}</p><p class="s">${a.role === "admin" ? "Директор" : "Менеджер"} · логин ${escapeHtml(a.login)}</p></div>
+  <span class="adm-btns"><button class="adm-del" data-edit-staff="${a.id}">Изменить</button>
+    ${a.me ? "" : `<button class="adm-del" data-delete-staff="${a.id}">Удалить</button>`}</span></div>`;
 
-export function openStaffManager() {
-  const list = state.staff;
+function render() {
+  if (state.view !== "staff") return;
   sheetBody.innerHTML = `<div class="grab"></div>
     <h2 class="p-name">Сотрудники</h2>
-    <p class="adm-sub">Менеджер видит свою должность и ФИО, управляет товарами и складом. Назначать сотрудников может только директор.</p>
-    ${list.length ? list.map(managerCard).join("") : `<p class="adm-sub">Менеджеров пока нет.</p>`}
-    ${editingId === 0 ? managerForm() : `<button class="primary" id="addManager">Назначить менеджера</button>`}
-    <p class="label">Как назначить</p>
-    <ol class="steps">
-      <li>Менеджер открывает магазин в Telegram и внизу нажимает «Для сотрудников» — там его Telegram ID.</li>
-      <li>Вы вписываете этот ID, ФИО и должность и нажимаете «Назначить».</li>
-      <li>Чтобы менеджер мог сохранять изменения, создайте для него отдельный ключ и передайте лично:</li>
-    </ol>
-    ${keyInstructions()}
-    <p class="adm-sub">Когда снимаете менеджера, удалите и его ключ: github.com/settings/personal-access-tokens.</p>`;
-  sheetBody.onclick = onStaffClick;
+    <p class="adm-sub">Сотрудник входит по этой ссылке своим логином и паролем. Менеджер видит заказы, переписку и товары, сотрудников — только директор.</p>
+    <div class="req"><p class="req-t staff-link">${escapeHtml(staffLink())}</p><button class="ghost copy" id="copyStaffLink">Скопировать ссылку</button></div>
+    ${loadError ? `<p class="hint">${loadError}</p>` : accounts.map(accountCard).join("")}
+    ${editing === 0 ? accountForm() : loadError ? "" : `<button class="primary" id="addStaff">Добавить сотрудника</button>`}
+    <p class="adm-sub" style="margin-top:12px">Пароль хранится в зашифрованном виде — посмотреть его нельзя, только задать новый. После смены пароля или удаления сотрудник сразу теряет доступ.</p>`;
+}
+
+async function load() {
+  try {
+    accounts = await api.staffList();
+    loadError = "";
+  } catch (error) {
+    loadError = staffError(error);
+  }
+  render();
+}
+
+export function openStaffManager() {
+  editing = null;
+  loadError = "";
+  sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Сотрудники</h2><p class="adm-sub">Загружаем…</p>`;
+  sheetBody.onclick = onClick;
   openSheet("staff");
+  load();
 }
 
-async function onStaffClick(e) {
+async function onClick(e) {
   const t = e.target;
-  const edit = t.dataset.editManager, remove = t.dataset.removeManager;
-  if (t.id === "addManager") editingId = 0;
-  else if (t.id === "cancelManager") editingId = null;
-  else if (edit) editingId = Number(edit);
-  else if (remove) {
-    if (!t.hasAttribute("data-armed")) { t.setAttribute("data-armed", ""); t.textContent = "Точно снять?"; return haptic("medium"); }
-    t.disabled = true;
-    await saveStaff(state.staff.filter((m) => m.telegramId !== Number(remove)), "Менеджер снят");
-  } else if (t.id === "saveManager") return saveManager(t);
+  if (t.id === "copyStaffLink") return copyToClipboard(staffLink(), t);
+  if (t.id === "saveStaff") return save(t);
+  if (t.dataset.deleteStaff) return remove(t);
+  if (t.id === "addStaff") editing = 0;
+  else if (t.id === "cancelStaff") editing = null;
+  else if (t.dataset.editStaff) editing = Number(t.dataset.editStaff);
   else return;
-  openStaffManager();
-  $("managerId")?.focus();
+  haptic();
+  render();
+  $("staffName")?.focus();
 }
 
-async function saveManager(button) {
-  const telegramId = Number($("managerId").value.trim());
-  const name = $("managerName").value.trim(), position = $("managerPosition").value.trim() || "Менеджер";
-  const taken = state.staff.some((m) => m.telegramId === telegramId && m.telegramId !== editingId);
-  const problem = !(telegramId > 0) ? "Telegram ID — это число, например 123456789"
-    : !name ? "Впишите ФИО" : taken ? "Сотрудник с таким ID уже есть" : "";
+async function save(button) {
+  const name = $("staffName").value.trim(), login = $("staffLogin").value.trim().toLowerCase(), password = $("staffPass").value;
+  const problem = name.length < 2 ? STAFF_ERRORS.bad_name
+    : !/^[a-z0-9._-]{3,32}$/.test(login) ? STAFF_ERRORS.bad_login
+    : (editing === 0 || password) && password.length < 8 ? STAFF_ERRORS.short_password : "";
   if (problem) { $("hint").textContent = problem; return haptic("medium"); }
   button.disabled = true;
-  const staff = state.staff.filter((m) => m.telegramId !== editingId).concat({ telegramId, name, position });
-  if (await saveStaff(staff, editingId ? "Изменения сохранены" : "Менеджер назначен")) editingId = null;
-  openStaffManager();
+  try {
+    await api.staffSave(editing || null, name, login, password);
+    haptic("success");
+    toast(editing === 0 ? "Сотрудник добавлен. Передайте ему ссылку, логин и пароль" : "Изменения сохранены");
+    editing = null;
+    await load();
+  } catch (error) {
+    button.disabled = false;
+    $("hint").textContent = staffError(error);
+    haptic("medium");
+  }
 }
 
-export function initStaffManager(onlyWithKey) {
-  $("adminStaffButton").onclick = () => onlyWithKey(openStaffManager);
-  on("catalog", () => state.view === "staff" && editingId === null && openStaffManager());
+async function remove(button) {
+  if (!button.hasAttribute("data-armed")) { button.setAttribute("data-armed", ""); button.textContent = "Точно удалить?"; return haptic("medium"); }
+  button.disabled = true;
+  try {
+    await api.staffDelete(Number(button.dataset.deleteStaff));
+    haptic("success");
+    toast("Сотрудник удалён, доступ закрыт");
+  } catch (error) {
+    toast(staffError(error));
+  }
+  await load();
+}
+
+export function initStaffManager() {
+  $("adminStaffButton").onclick = () => { haptic(); openStaffManager(); };
 }

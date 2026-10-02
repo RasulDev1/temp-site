@@ -4,6 +4,7 @@ import { emit, escapeHtml } from "./core.js?v=20261001b";
 import { state, api, saveCart, imageUrl } from "./state.js?v=20261001b";
 
 export const CATEGORY_NAMES = Object.fromEntries(CATEGORIES);
+let priceOverrides = {}; // id → { price, old }: цены и скидки, которые поменял администратор
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 export const colorName = (product, color) => product.colorNames?.[color] || COLOR_NAMES[color] || color;
@@ -42,6 +43,21 @@ function fromServer(raw) {
   };
 }
 
+/** Цена со скидкой: old — цена до скидки (0 — скидки нет) */
+function withPrice(product) {
+  const o = priceOverrides[product.id];
+  const price = Math.round(o?.price);
+  if (!(price > 0)) return product;
+  const old = Math.round(o.old) || 0;
+  return { ...product, price, oldPrice: old > price ? old : 0 };
+}
+
+/** Исходная цена товара — без правок администратора */
+export const originalPrice = (id) => {
+  const p = BASE_PRODUCTS.find((x) => x.id === id) || state.customProducts.find((x) => x.id === id);
+  return p ? { price: p.price, old: p.oldPrice || 0 } : null;
+};
+
 /** Применяет убранные варианты и остатки. null — у товара не осталось ни одного сочетания. */
 function forCustomers(product) {
   const qty = state.stock[product.id]?.qty;
@@ -76,12 +92,13 @@ export function applyCatalog(data) {
   state.variants = data.variants || {};
   state.stock = data.stock || {};
   state.staff = Array.isArray(data.staff) ? data.staff : [];
+  priceOverrides = data.prices && typeof data.prices === "object" ? data.prices : {};
   state.catalogLoaded = true;
   rebuildCatalog();
 }
 
 export function rebuildCatalog() {
-  state.catalogProducts = BASE_PRODUCTS.filter((p) => !state.hiddenProductIds.includes(p.id)).concat(state.customProducts);
+  state.catalogProducts = BASE_PRODUCTS.filter((p) => !state.hiddenProductIds.includes(p.id)).concat(state.customProducts).map(withPrice);
   state.products = state.catalogProducts.map(forCustomers).filter(Boolean);
   if (state.catalogLoaded) fitCartToCatalog();
   emit("catalog");

@@ -8,7 +8,7 @@ import { GITHUB_REPO } from "./config.js?v=20261001b";
 const CATALOG_PATH = "catalog/catalog.json";
 const PHOTOS_DIR = "catalog/photos";
 const TOKEN_KEY = "temp_github_token";
-const EMPTY_CATALOG = { products: [], hidden: [], variants: {}, stock: {}, staff: [] };
+const EMPTY_CATALOG = { products: [], hidden: [], variants: {}, stock: {}, staff: [], prices: {} };
 
 /** owner/repo: из настроек или из адреса сайта (логин.github.io/репозиторий) */
 export const repository = GITHUB_REPO || (() => {
@@ -110,6 +110,11 @@ export const githubApi = {
     if (empty) delete c.variants[id]; else c.variants[id] = variants;
   }, "Цвета и размеры"),
   setStaff: (staff) => updateCatalog((c) => { c.staff = staff; }, "Сотрудники"),
+  /** Цена и скидка любого товара (и встроенного, и добавленного). null — вернуть исходную цену. */
+  setPrice: (id, value) => updateCatalog((c) => {
+    c.prices ||= {};
+    if (value) c.prices[id] = { price: value.price, old: value.old || 0 }; else delete c.prices[id];
+  }, "Цена"),
   setStock: (id, qty) => updateCatalog((c) => { if (qty) c.stock[id] = { qty }; else delete c.stock[id]; }, "Остатки"),
   async createProduct(product) {
     const num = Date.now();

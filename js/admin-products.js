@@ -2,7 +2,7 @@
 import { $, formatPrice, escapeHtml, pluralize, haptic, toast, on } from "./core.js?v=20261001b";
 import { BASE_PRODUCTS, CATEGORIES } from "./data.js?v=20261001b";
 import { state, api, errorMessage, hasServer } from "./state.js?v=20261001b";
-import { CATEGORY_NAMES, colorName, swatchBackground, refreshCatalog } from "./catalog.js?v=20261001b";
+import { CATEGORY_NAMES, colorName, swatchBackground, refreshCatalog, originalPrice } from "./catalog.js?v=20261001b";
 import { productImage } from "./photos.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
@@ -30,13 +30,16 @@ async function runAction(action, successText) {
   }
 }
 
+const discountPercent = (price, old) => Math.round((1 - price / old) * 100);
+
 /* ---------- Список товаров ---------- */
 function productSummary(p) {
   const e = state.products.find((x) => x.id === p.id) || p;
   const inStock = e.stock && Object.entries(e.stock)
     .filter(([key]) => { const [c, s] = key.split("|"); return e.colors.includes(c) && e.sizes.includes(s); })
     .reduce((sum, [, n]) => sum + Math.max(0, Number(n) || 0), 0);
-  return [CATEGORY_NAMES[p.category], formatPrice(p.price),
+  const price = p.oldPrice ? `${formatPrice(p.price)} (−${discountPercent(p.price, p.oldPrice)}%, было ${formatPrice(p.oldPrice)})` : formatPrice(p.price);
+  return [CATEGORY_NAMES[p.category], price,
     `${e.colors.length} ${pluralize(e.colors.length, "цвет", "цвета", "цветов")}, ${e.sizes.length} ${pluralize(e.sizes.length, "размер", "размера", "размеров")}`,
     e.edited && "изменён", e.stock && `на складе ${inStock} шт.`].filter(Boolean).join(" · ");
 }
@@ -48,7 +51,7 @@ export function openAdminProducts() {
   const hidden = BASE_PRODUCTS.filter((p) => state.hiddenProductIds.includes(p.id));
   sheetBody.innerHTML = `<div class="grab"></div>
     <h2 class="p-name">Товары в каталоге</h2>
-    <p class="adm-sub">${state.catalogProducts.length} шт. «Изменить» — цвета, размеры и количество на складе. «Удалить» — весь товар.</p>
+    <p class="adm-sub">${state.catalogProducts.length} шт. «Изменить» — цена и скидка, цвета, размеры и количество на складе. «Удалить» — весь товар.</p>
     <button class="primary" id="addProduct">Добавить товар</button>
     ${hasServer ? "" : `<p class="adm-sub" style="margin-top:10px">Изменения сохраняются в репозиторий GitHub, покупатели увидят их через 1–2 минуты.</p>`}
     ${state.catalogProducts.map((p) => productRow(p, `<span class="adm-btns">
@@ -92,6 +95,8 @@ function openVariantEditor(id) {
     product,
     offColors: new Set(v.offColors), offSizes: new Set(v.offSizes), offCombos: new Set(v.offCombos),
     trackStock: Boolean(qty), qty: { ...qty },
+    // цена до скидки и цена со скидкой (пусто — скидки нет)
+    price: String(product.oldPrice || product.price), sale: product.oldPrice ? String(product.price) : "",
   };
   renderVariantEditor();
   sheetBody.onclick = async (e) => {
@@ -103,6 +108,11 @@ function openVariantEditor(id) {
     else if (t.id === "trackStock") {
       draft.trackStock = t.checked;
       p.colors.forEach((c) => p.sizes.forEach((s) => (draft.qty[key(c, s)] ??= 0)));
+    } else if (t.dataset.discount) {
+      const base = Math.round(Number(draft.price)) || 0, d = Number(t.dataset.discount);
+      if (d && !(base > 0)) { $("priceHint").textContent = "Сначала укажите цену"; return haptic("medium"); }
+      // цену со скидкой округляем до десятков: 2990 −20% → 2390
+      draft.sale = d ? String(Math.max(1, Math.min(base - 1, Math.round(base * (1 - d / 100) / 10) * 10))) : "";
     } else if (t.id === "saveVariants") return saveVariants(t);
     else if (t.id === "deleteProduct") {
       if (confirmTwice(t, "Точно удалить весь товар?") && await deleteProduct(p.id)) openAdminProducts();
@@ -112,6 +122,12 @@ function openVariantEditor(id) {
     renderVariantEditor();
   };
   sheetBody.oninput = (e) => {
+    if (e.target.id === "priceBase" || e.target.id === "priceSale") {
+      draft[e.target.id === "priceBase" ? "price" : "sale"] = e.target.value;
+      $("pricePreview").innerHTML = pricePreview();
+      $("priceHint").textContent = "";
+      return;
+    }
     const cell = e.target.dataset.qty;
     if (!cell) return;
     const n = Math.max(0, Math.min(99999, Math.floor(Number(e.target.value) || 0)));
@@ -138,11 +154,46 @@ function variantCell(color, size) {
   return `<button class="vcell${off ? " off" : ""}" data-off-combo="${key(color, size)}" ${wholeOff ? "disabled" : ""} aria-pressed="${!off}" aria-label="${label}">${off ? "" : "✓"}</button>`;
 }
 
+/** Что увидит покупатель с введёнными ценами */
+function pricePreview() {
+  const base = Math.round(Number(draft.price)) || 0, sale = Math.round(Number(draft.sale)) || 0;
+  if (!(base > 0)) return "Укажите цену.";
+  if (!sale) return `Без скидки. Покупатель увидит: <b>${formatPrice(base)}</b>`;
+  if (sale >= base) return "Цена со скидкой должна быть меньше обычной цены.";
+  return `Покупатель увидит: <b>${formatPrice(sale)}</b> <s>${formatPrice(base)}</s> и отметку «−${discountPercent(sale, base)}%»`;
+}
+
+const priceEditorHtml = () => !api.setPrice ? "" : `<p class="label">Цена и скидка</p>
+    <div class="two">
+      <label class="field"><span>Цена, ₽</span><input id="priceBase" type="number" inputmode="numeric" min="1" value="${escapeHtml(draft.price)}"></label>
+      <label class="field"><span>Цена со скидкой, ₽</span><input id="priceSale" type="number" inputmode="numeric" min="0" value="${escapeHtml(draft.sale)}" placeholder="Без скидки"></label>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+      ${[10, 15, 20, 30, 50].map((d) => `<button class="adm-del" data-discount="${d}">−${d}%</button>`).join("")}
+      <button class="adm-del" data-discount="0">Без скидки</button>
+    </div>
+    <p class="adm-sub" id="pricePreview" style="margin-top:8px">${pricePreview()}</p>
+    <p class="hint" id="priceHint"></p>
+    <p class="label">Цвета, размеры и остатки</p>`;
+
+/** Цена, которую нужно сохранить: undefined — не менялась, null — вернуть исходную, иначе { price, old } */
+function priceToSave() {
+  const { product: p } = draft;
+  const base = Math.round(Number(draft.price)) || 0, sale = Math.round(Number(draft.sale)) || 0;
+  if (!(base > 0) || base > 10000000) return { error: "Укажите цену больше нуля" };
+  if (sale && sale >= base) return { error: "Цена со скидкой должна быть меньше обычной цены" };
+  const value = sale ? { price: sale, old: base } : { price: base, old: 0 };
+  if (value.price === p.price && value.old === (p.oldPrice || 0)) return { value: undefined };
+  const original = originalPrice(p.id);
+  return { value: original && original.price === value.price && original.old === value.old ? null : value };
+}
+
 function renderVariantEditor() {
   const { product: p, trackStock } = draft, scroll = $("sheet").scrollTop;
   sheetBody.innerHTML = `<div class="grab"></div>
     <button class="adm-back" id="backToProducts">← Все товары</button>
     <h2 class="p-name">${p.name}</h2>
+    ${priceEditorHtml()}
     <label class="check-line"><input type="checkbox" id="trackStock" ${trackStock ? "checked" : ""}> Вести учёт количества</label>
     <p class="adm-sub">${trackStock ? `Впишите, сколько штук каждого сочетания на складе. 0 — нет в наличии. ${hasServer ? "Остатки уменьшаются сами при каждом заказе." : "После продажи уменьшайте остаток здесь вручную."}`
       : "Нажмите на клетку, чтобы убрать сочетание. Без учёта количества товар продаётся без ограничений."} Нажмите на цвет или размер, чтобы убрать его целиком.</p>
@@ -167,10 +218,17 @@ async function saveVariants(button) {
     $("hint").textContent = "Должно остаться хотя бы одно сочетание цвета и размера. Чтобы убрать всё, удалите товар целиком.";
     return haptic("medium");
   }
+  const price = api.setPrice ? priceToSave() : { value: undefined };
+  if (price.error) {
+    $("priceHint").textContent = price.error;
+    $("priceBase").scrollIntoView({ block: "center" });
+    return haptic("medium");
+  }
   const qty = trackStock ? Object.fromEntries(p.colors.flatMap((c) => p.sizes.map((s) => [key(c, s), Number(draft.qty[key(c, s)]) || 0]))) : null;
   button.disabled = true;
   button.textContent = "Сохраняем…";
   const saved = await runAction(async () => {
+    if (price.value !== undefined) await api.setPrice(p.id, price.value);
     await api.setVariants(p.id, { offColors: [...draft.offColors], offSizes: [...draft.offSizes], offCombos });
     await api.setStock(p.id, qty);
   }, "Изменения сохранены");

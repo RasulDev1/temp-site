@@ -7,6 +7,7 @@ import { MANAGER_USERNAME } from "./config.js?v=20261001b";
 import { colorName, swatchBackground, stockLeft, refreshCatalog } from "./catalog.js?v=20261001b";
 import { productImage, applyRecolors } from "./photos.js?v=20261001b";
 import { sheetBody, openSheet, closeSheet, setTab, openCart, syncMainButton } from "./nav.js?v=20261001b";
+import { chatButtonHtml, openChat, onChatEvent } from "./chat.js?v=20261001b";
 
 const tint = (color) => `color-mix(in srgb, ${color} 14%, var(--bg))`;
 const emptyState = (title, text, buttonId) =>
@@ -205,6 +206,8 @@ function myOrderHtml(o) {
       <button class="ghost copy" data-copy="${o.num}">Скопировать реквизиты</button></div>
       ${isPaymentLink(details) ? `<a class="primary pay" href="${escapeHtml(details)}" data-pay>Перейти к оплате</a>` : ""}` : ""}
     ${status === "rejected" && o.message ? `<p class="ord-note">${escapeHtml(o.message)}</p>` : ""}
+    ${useSupabase && status === "accepted" ? `<p class="adm-sub" style="margin-top:10px">Оплатили? Отправьте чек менеджеру в чат.</p>` : ""}
+    ${useSupabase ? chatButtonHtml(o, "customer") : ""}
     ${status === "new" ? `<p class="adm-sub">${hasOrdersBackend ? "Менеджер проверит наличие и пришлёт реквизиты для оплаты. Статус обновится здесь сам." : "Статус заказа уточняйте у менеджера в Telegram."}</p>` : ""}
   </article>`;
 }
@@ -235,17 +238,23 @@ export function initCart() {
     if (e.target.id === "goShopping") setTab("shop");
     const pay = e.target.closest("[data-pay]");
     if (pay) { e.preventDefault(); openLink(pay.href); }
+    const chatButton = e.target.closest("[data-chat]");
+    const chatOrder = chatButton && state.myOrders.find((o) => o.num === Number(chatButton.dataset.chat));
+    if (chatOrder) { haptic(); openChat(chatOrder, "customer"); }
     const copy = e.target.closest("[data-copy]");
     if (copy) copyToClipboard(paymentDetails(state.myOrders.find((o) => o.num === Number(copy.dataset.copy))), copy);
   };
   on("catalog", () => state.tab === "cart" && renderCartPage());
+  on("chatseen", () => state.tab === "orders" && renderMyOrders()); // убрать отметку «новое»
   document.addEventListener("visibilitychange", () => !document.hidden && state.tab === "orders" && renderMyOrders(true));
   if (useSupabase) watchMyOrders();
 }
 
-/** Supabase: заказ меняется — перечитываем «Мои заказы». Пришли реквизиты — сообщаем покупателю. */
+/** Supabase: заказ меняется — перечитываем «Мои заказы». Пришли реквизиты или сообщение — сообщаем покупателю. */
 function watchMyOrders() {
-  watchOrders("user", async ({ id, op }) => {
+  watchOrders("user", async (payload) => {
+    const { id, op } = payload;
+    if (onChatEvent(payload, "customer")) return renderMyOrders(true);
     await renderMyOrders(true);
     const order = state.myOrders.find((o) => o.num === Number(id));
     if (op === "update" && order?.status === "accepted") { haptic("success"); toast(`Заказ №${order.num}: пришли реквизиты`); }

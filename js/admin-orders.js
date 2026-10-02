@@ -1,10 +1,11 @@
 // Администратор: заказы. Принять и отправить реквизиты для оплаты или отказать, если товара нет.
-import { $, formatPrice, formatDate, escapeHtml, pluralize, haptic, toast, storage, openLink } from "./core.js?v=20261001b";
+import { $, formatPrice, formatDate, escapeHtml, pluralize, haptic, toast, storage, openLink, on } from "./core.js?v=20261001b";
 import { state, api, errorMessage, useSupabase } from "./state.js?v=20261001b";
 import { watchOrders } from "./supabase.js?v=20261001b";
 import { refreshCatalog } from "./catalog.js?v=20261001b";
 import { orderItemsHtml, paymentDetails } from "./cart.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
+import { chatButtonHtml, openChat, onChatEvent, hasUnread } from "./chat.js?v=20261001b";
 
 const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", rejected: "Отказ" };
 let openForm = null; // { num, type: "accept" | "reject", text, note }
@@ -24,8 +25,9 @@ export async function loadAdminOrders() {
 
 function updateOrdersButton() {
   const n = newOrdersCount(), button = $("adminOrdersButton");
-  button.textContent = n ? `Заказы · ${n} ${pluralize(n, "новый", "новых", "новых")}` : "Заказы";
-  button.classList.toggle("has-new", n > 0);
+  const chats = state.adminOrders.filter((o) => hasUnread(o, "staff")).length; // заказы с непрочитанными сообщениями
+  button.textContent = (n ? `Заказы · ${n} ${pluralize(n, "новый", "новых", "новых")}` : "Заказы") + (chats ? ` · 💬 ${chats}` : "");
+  button.classList.toggle("has-new", n + chats > 0);
 }
 
 /** Ссылка на покупателя: по имени пользователя, по Telegram ID или телефону */
@@ -60,7 +62,8 @@ function decisionResultHtml(o) {
     <p class="adm-sub">${useSupabase ? "Покупатель видит статус и реквизиты во вкладке «Мои заказы»."
       : o.delivered ? "Сообщение доставлено покупателю в Telegram."
       : "Сообщение не доставлено: покупатель не разрешил боту писать ему. Напишите ему сами по ссылке ниже."}</p>
-    ${link ? `<a class="ord-link" href="${link[0]}" data-customer-link>${link[1]}</a>` : ""}</div>`;
+    ${link ? `<a class="ord-link" href="${link[0]}" data-customer-link>${link[1]}</a>` : ""}
+    ${useSupabase ? chatButtonHtml(o, "staff") : ""}</div>`;
 }
 
 const orderHtml = (o) => `<article class="ord st-${o.status}" id="order-${o.num}">
@@ -98,6 +101,9 @@ async function onOrdersClick(e) {
   const t = e.target;
   const link = t.closest("[data-customer-link]");
   if (link) { e.preventDefault(); return openLink(link.href); }
+  const chatButton = t.closest("[data-chat]");
+  const chatOrder = chatButton && state.adminOrders.find((o) => o.num === Number(chatButton.dataset.chat));
+  if (chatOrder) { haptic(); return openChat(chatOrder, "staff", () => openAdminOrders(chatOrder.num)); }
   if (t.dataset.accept) openForm = { num: Number(t.dataset.accept), type: "accept", text: storage.get("temp_last_pay", "") };
   else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(t.dataset.reject) };
   else if (t.hasAttribute("data-cancel")) openForm = null;
@@ -158,8 +164,10 @@ export function initAdminOrders() {
   setInterval(() => !document.hidden && loadAdminOrders(), 30000);
   document.addEventListener("visibilitychange", () => !document.hidden && loadAdminOrders());
   // Supabase Realtime: новый или изменённый заказ появляется сразу, без ожидания
-  if (useSupabase) watchOrders("staff", async ({ id, op }) => {
+  if (useSupabase) watchOrders("staff", async (payload) => {
     await loadAdminOrders();
-    if (op === "insert") { haptic("success"); toast(`Новый заказ №${id}`); }
+    if (onChatEvent(payload, "staff")) return;
+    if (payload.op === "insert") { haptic("success"); toast(`Новый заказ №${payload.id}`); }
   }, loadAdminOrders);
+  on("chatseen", updateOrdersButton);
 }

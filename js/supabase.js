@@ -76,6 +76,19 @@ const toOrder = (r) => ({
   user: { id: r.user_id, username: r.username },
 });
 
+/** Сводка переписки по заказам (сколько сообщений, последнее от менеджера и от покупателя) */
+async function withChat(orders) {
+  if (!orders.length) return orders;
+  const { data, error } = await db().from("order_chat_summary").select("order_id,total,last_staff,last_customer")
+    .in("order_id", orders.map((o) => o.num));
+  if (error) return orders; // чат ещё не настроен в базе — заказы показываем как раньше
+  const byId = new Map(data.map((s) => [Number(s.order_id), s]));
+  return orders.map((o) => {
+    const s = byId.get(o.num);
+    return s ? { ...o, chat: { total: Number(s.total), lastStaff: Number(s.last_staff), lastCustomer: Number(s.last_customer) } } : o;
+  });
+}
+
 /** Менеджер меняет заказ, только если тот ещё в ожидаемом статусе — иначе его уже обработал другой */
 async function setStatus(num, from, patch) {
   const { data, error } = await db().from("orders").update(patch).eq("id", num).eq("status", from).select();
@@ -101,17 +114,42 @@ export const supabaseApi = {
     if (!user) return { orders: [] };
     const { data, error } = await db().from("orders").select("*").eq("user_id", user.telegram_id).order("id", { ascending: false }).limit(50);
     if (error) fail(error);
-    return { orders: data.map(toOrder) };
+    return { orders: await withChat(data.map(toOrder)) };
   },
   async adminOrders() {
     await supabaseLogin();
     const { data, error } = await db().from("orders").select("*").order("id", { ascending: false }).limit(200);
     if (error) fail(error);
-    return { orders: data.map(toOrder) };
+    return { orders: await withChat(data.map(toOrder)) };
   },
   acceptOrder: (num, payDetails, note) => setStatus(num, "new", { status: "awaiting_payment", payment_details: payDetails, manager_note: note || null }),
   rejectOrder: (num, message) => setStatus(num, "new", { status: "cancelled", manager_note: message }),
   markPaid: (num) => setStatus(num, "awaiting_payment", { status: "paid" }),
+
+  /* ---------- Переписка по заказу ---------- */
+  async chatMessages(num) {
+    const { data, error } = await db().from("order_messages")
+      .select("id,body,from_staff,file_name,file_type,file_size,created_at").eq("order_id", num).order("id").limit(300);
+    if (error) fail(error);
+    return data;
+  },
+  async chatFile(id) {
+    const { data, error } = await db().from("order_messages").select("file_name,file_type,file_data").eq("id", id).single();
+    if (error) fail(error);
+    return data;
+  },
+  async sendChatMessage(num, text, file) {
+    if (!(await supabaseLogin())) throw { code: "unauthorized", reason: loginError };
+    // отправителя, время и «менеджер или покупатель» ставит сама база
+    const { error } = await db().from("order_messages").insert({
+      order_id: num, body: text || null,
+      file_name: file?.name ?? null, file_type: file?.type ?? null, file_data: file?.data ?? null,
+    });
+    if (!error) return;
+    const reason = /chat:([a-z_]+)/.exec(error.message || "")?.[1];
+    throw { code: { closed: "chat_closed", too_many: "rate_limited", too_many_files: "too_many_files" }[reason]
+      || (error.code === "23514" || error.code === "54000" ? "too_large" : "server"), raw: error };
+  },
 
   /** Роль в базе: директор назначает менеджеров в «Сотрудниках» — доступ к заказам меняется здесь */
   async setRole(telegramId, role) {

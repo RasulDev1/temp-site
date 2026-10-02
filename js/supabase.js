@@ -30,6 +30,7 @@ let client = null;
 let me = null;          // { telegram_id, username, role, topic, staff_topic }
 let loginPromise = null;
 let loginError = null;  // почему не удалось войти — показываем в подсказке вместо общей фразы
+let archiveReady = false; // в базе настроены скрытые заказы (supabase-archive.sql)
 export const supabaseLoginError = () => loginError;
 
 function db() {
@@ -116,11 +117,30 @@ export const supabaseApi = {
     if (error) fail(error);
     return { orders: await withChat(data.map(toOrder)) };
   },
-  async adminOrders() {
+  /** archived — скрытые заказы. Без настроенной очистки (supabase-archive.sql) — все заказы, как раньше. */
+  async adminOrders(archived = false) {
     await supabaseLogin();
-    const { data, error } = await db().from("orders").select("*").order("id", { ascending: false }).limit(200);
+    const query = (table) => db().from(table).select("*").order("id", { ascending: false }).limit(200);
+    let { data, error } = await query(archived ? "orders_archived" : "orders_active");
+    archiveReady = !error;
+    if (error && !archived) ({ data, error } = await query("orders"));
     if (error) fail(error);
-    return { orders: await withChat(data.map(toOrder)) };
+    return { orders: await withChat(data.map(toOrder)), canArchive: archiveReady };
+  },
+  /** Скрыть заказы из списка персонала (покупатель их по-прежнему видит) */
+  async archiveOrders(nums) {
+    const { error } = await db().from("order_archive")
+      .upsert(nums.map((order_id) => ({ order_id })), { onConflict: "order_id", ignoreDuplicates: true });
+    if (error) fail(error);
+  },
+  async unarchiveOrder(num) {
+    const { error } = await db().from("order_archive").delete().eq("order_id", num);
+    if (error) fail(error);
+  },
+  async archivedCount() {
+    if (!archiveReady) return 0;
+    const { count, error } = await db().from("order_archive").select("order_id", { count: "exact", head: true });
+    return error ? 0 : count || 0;
   },
   acceptOrder: (num, payDetails, note) => setStatus(num, "new", { status: "awaiting_payment", payment_details: payDetails, manager_note: note || null }),
   rejectOrder: (num, message) => setStatus(num, "new", { status: "cancelled", manager_note: message }),

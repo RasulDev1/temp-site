@@ -1,0 +1,8 @@
+/* ---------- Заказы у персонала: контакты покупателя и очистка списка (js/admin-orders.js) ---------- */
+.ord-contacts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 0 0; font-size: 14px; }
+.ord-contacts dt { color: var(--muted); }
+.ord-contacts dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; user-select: all; font-variant-numeric: tabular-nums; }
+.ord-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 6px; }
+.ord-tools .ghost { margin-top: 6px; }
+.ord-tools .ghost.danger { width: auto; }
+.ord-tools .link { padding: 8px 0; }

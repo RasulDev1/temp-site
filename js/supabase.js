@@ -67,7 +67,7 @@ export function supabaseLogin() {
 }
 function fail_(reason) { loginError = reason; return null; }
 
-/* В базе статусы new · awaiting_payment · paid · cancelled; в интерфейсе — new · accepted · paid · rejected */
+/* В базе статусы new · awaiting_payment · paid · delivered · cancelled; в интерфейсе — new · accepted · paid · delivered · rejected */
 const STATUS = { awaiting_payment: "accepted", cancelled: "rejected" };
 const toOrder = (r) => ({
   num: r.id, status: STATUS[r.status] || r.status, date: r.created_at,
@@ -145,6 +145,7 @@ export const supabaseApi = {
   acceptOrder: (num, payDetails, note) => setStatus(num, "new", { status: "awaiting_payment", payment_details: payDetails, manager_note: note || null }),
   rejectOrder: (num, message) => setStatus(num, "new", { status: "cancelled", manager_note: message }),
   markPaid: (num) => setStatus(num, "awaiting_payment", { status: "paid" }),
+  markDelivered: (num) => setStatus(num, "paid", { status: "delivered" }),
 
   /* ---------- Переписка по заказу ---------- */
   async chatMessages(num) {

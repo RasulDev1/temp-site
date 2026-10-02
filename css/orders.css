@@ -6,3 +6,8 @@
 .ord-tools .ghost { margin-top: 6px; }
 .ord-tools .ghost.danger { width: auto; }
 .ord-tools .link { padding: 8px 0; }
+.ord-hide { display: block; margin: 12px 0 0 auto; padding: 4px 0; }
+.ord-hide[data-armed] { color: var(--danger); font-weight: 600; }
+
+/* ---------- «Мои заказы» у покупателя: принятые / отменённые / ждут подтверждения (js/cart.js) ---------- */
+.order-groups { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0 6px; }

@@ -81,7 +81,8 @@ const orderHtml = (o) => `<article class="ord st-${o.status}" id="order-${o.num}
   <p class="ord-sum">Итого <b>${formatPrice(Number(o.total) || 0)}</b></p>
   ${showArchived ? `<div class="ord-res">${useSupabase ? chatButtonHtml(o, "staff") : ""}
     <button class="ghost" data-unarchive="${o.num}" style="width:100%">Вернуть в список</button></div>`
-    : `${decisionFormHtml(o)}${decisionResultHtml(o)}`}
+    : `${decisionFormHtml(o)}${decisionResultHtml(o)}${canArchive && openForm?.num !== o.num
+      ? `<button class="link ord-hide" data-hide="${o.num}">Скрыть заказ</button>` : ""}`}
 </article>`;
 
 /** Заказы, которые уберёт «Очистить список»: все, кроме новых (их ещё нужно принять или отклонить) */
@@ -135,6 +136,7 @@ async function onOrdersClick(e) {
   if (t.hasAttribute("data-show-archived")) return switchList(true);
   if (t.hasAttribute("data-show-active")) return switchList(false);
   if (t.dataset.unarchive) return unarchive(t);
+  if (t.dataset.hide) return hideOne(t);
   if (t.dataset.accept) openForm = { num: Number(t.dataset.accept), type: "accept", text: storage.get("temp_last_pay", "") };
   else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(t.dataset.reject) };
   else if (t.hasAttribute("data-cancel")) openForm = null;
@@ -191,6 +193,29 @@ async function clearList(button) {
     toast("Список очищен. Новые заказы остались");
   } catch (error) {
     toast(errorMessage(error));
+  }
+  await loadAdminOrders();
+  renderOrders();
+}
+
+/** Скрыть один заказ: первое нажатие спрашивает, второе скрывает */
+async function hideOne(button) {
+  const num = Number(button.dataset.hide);
+  if (!button.hasAttribute("data-armed")) {
+    sheetBody.querySelectorAll(".ord-hide[data-armed]").forEach((b) => { b.removeAttribute("data-armed"); b.textContent = "Скрыть заказ"; });
+    button.setAttribute("data-armed", "");
+    button.textContent = state.adminOrders.find((o) => o.num === num)?.status === "new"
+      ? "Заказ ещё не обработан. Всё равно скрыть? Нажмите ещё раз" : "Скрыть заказ? Нажмите ещё раз";
+    return haptic("medium");
+  }
+  button.disabled = true;
+  try {
+    await api.archiveOrders([num]);
+    haptic("success");
+    toast(`Заказ №${num} скрыт`);
+  } catch (error) {
+    button.disabled = false;
+    return toast(errorMessage(error));
   }
   await loadAdminOrders();
   renderOrders();

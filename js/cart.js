@@ -186,6 +186,7 @@ export const paymentDetails = (order) => order.payDetails || order.payUrl || "";
 const isPaymentLink = (text) => /^https:\/\/\S+$/.test(text.trim());
 
 function rememberOrder(order) {
+  ordersGroup = "new"; // в «Моих заказах» сразу видно только что оформленный заказ
   state.myOrders = [order, ...state.myOrders.filter((o) => o.num !== order.num)].slice(0, 50);
   storage.set("temp_my_orders", state.myOrders);
 }
@@ -211,10 +212,24 @@ function myOrderHtml(o) {
   </article>`;
 }
 
+/** Заказы покупателя по группам: принятые (в том числе оплаченные), отменённые и ещё не подтверждённые */
+const ORDER_GROUPS = [["accepted", "Принятые"], ["rejected", "Отменённые"], ["new", "Ждут подтверждения"]];
+const groupOf = (o) => (o.status === "rejected" ? "rejected" : o.status === "accepted" || o.status === "paid" ? "accepted" : "new");
+let ordersGroup = null; // выбранная группа; null — первая непустая
+
+function myOrdersHtml() {
+  const counts = Object.fromEntries(ORDER_GROUPS.map(([id]) => [id, state.myOrders.filter((o) => groupOf(o) === id).length]));
+  const groups = ORDER_GROUPS.filter(([id]) => counts[id]);
+  if (!counts[ordersGroup]) ordersGroup = groups[0][0];
+  return `<h2 class="p-name">Мои заказы</h2>
+    <div class="order-groups" role="tablist">${groups.map(([id, title]) =>
+      `<button class="chip" role="tab" data-orders-group="${id}" aria-pressed="${id === ordersGroup}">${title} · ${counts[id]}</button>`).join("")}</div>
+    ${state.myOrders.filter((o) => groupOf(o) === ordersGroup).map(myOrderHtml).join("")}`;
+}
+
 export async function renderMyOrders(reload = false) {
   const page = $("ordersPage");
-  const draw = () => (page.innerHTML = state.myOrders.length
-    ? `<h2 class="p-name">Мои заказы</h2>${state.myOrders.map(myOrderHtml).join("")}`
+  const draw = () => (page.innerHTML = state.myOrders.length ? myOrdersHtml()
     : emptyState("Заказов пока нет", "Здесь появятся ваши заказы и реквизиты для оплаты.", "goShopping"));
   draw();
   if (!reload || !hasOrdersBackend) return;
@@ -235,6 +250,8 @@ export function initCart() {
   };
   $("ordersPage").onclick = (e) => {
     if (e.target.id === "goShopping") setTab("shop");
+    const group = e.target.closest("[data-orders-group]")?.dataset.ordersGroup;
+    if (group && group !== ordersGroup) { haptic(); ordersGroup = group; return renderMyOrders(); }
     const pay = e.target.closest("[data-pay]");
     if (pay) { e.preventDefault(); openLink(pay.href); }
     const chatButton = e.target.closest("[data-chat]");

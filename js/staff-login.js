@@ -19,8 +19,9 @@ export function openStaffLogin() {
     <p class="hint" id="hint"></p>
     <button class="primary" id="staffSignIn">Войти</button>`
     : `<p class="adm-sub">Вход для сотрудников работает только с базой Supabase (js/config.js).</p>`}`;
-  sheetBody.onclick = (e) => e.target.id === "staffSignIn" && signIn(e.target);
-  sheetBody.onkeydown = (e) => state.view === "staffLogin" && e.key === "Enter" && signIn($("staffSignIn"));
+  // Обработчики ничего не возвращают: false из onkeydown отменил бы ввод с клавиатуры
+  sheetBody.onclick = (e) => { if (e.target.id === "staffSignIn") signIn(e.target); };
+  sheetBody.onkeydown = (e) => { if (state.view === "staffLogin" && e.key === "Enter") signIn($("staffSignIn")); };
   openSheet("staffLogin");
   setTimeout(() => $("staffLoginName")?.focus(), 350);
 }

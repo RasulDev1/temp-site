@@ -56,7 +56,7 @@ function renderShell() {
   const { order, side } = chat;
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Заказ №${order.num}</h2>
     <p class="adm-sub">${side === "staff" ? "Переписка с покупателем. Сюда он пришлёт чек об оплате."
-      : "Переписка с менеджером. После оплаты отправьте сюда чек: фото, скриншот или PDF."}</p>
+      : "Переписка с менеджером. После оплаты отправьте сюда чек: фото, скриншот или PDF. Писать можно и прямо в чате с ботом — сообщения появятся здесь."}</p>
     <div class="chat" id="chatList"><p class="adm-sub">Загружаем переписку…</p></div>
     ${canWrite(order) ? `<div class="chat-compose">
       <div class="chat-file" id="chatPicked" hidden></div>

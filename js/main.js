@@ -24,6 +24,8 @@ rebuildCatalog();   // мгновенно: встроенные товары
 syncMainButton();
 refreshCatalog();   // добавленные товары, остатки, скрытые позиции
 document.addEventListener("visibilitychange", () => !document.hidden && refreshCatalog());
+// Кнопка «Мои заказы» в боте открывает магазин сразу на вкладке заказов (…/?tab=orders)
+if (new URLSearchParams(location.search).get("tab") === "orders" || telegram?.initDataUnsafe?.start_param === "orders") setTab("orders");
 
 /** Режим сотрудника: вместо вкладок покупателя (корзина, мои заказы, товары) — кнопки сотрудника, без корзины */
 function setStaffMode(on) {

@@ -16,6 +16,10 @@ const SHOP_URL = Deno.env.get("SHOP_URL") ?? "https://rasuldev1.github.io/temp-s
 const MAX_FILE = 3 * 1024 * 1024; // как в чате на сайте
 const FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
+// Подсказка в логах, если забыли добавить секреты
+if (!TOKEN) console.error("Нет секрета TELEGRAM_BOT_TOKEN: Edge Functions → Secrets");
+if (!SECRET) console.error("Нет секрета TELEGRAM_WEBHOOK_SECRET: Edge Functions → Secrets");
+
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false },
 });
@@ -29,7 +33,10 @@ async function tg(method: string, body: Json): Promise<Json> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return response.json().catch(() => ({}));
+  const result = await response.json().catch(() => ({}));
+  // Ошибки Telegram — в логи функции: неверный токен даёт 401 Unauthorized, заблокированный бот — 403
+  if (!result?.ok && method !== "setMessageReaction") console.error(`Telegram ${method}:`, result?.error_code, result?.description);
+  return result;
 }
 
 /** Кнопки «Открыть магазин» и «Мои заказы» — открывают мини-приложение внутри Telegram */
@@ -110,11 +117,13 @@ async function handle(msg: Json) {
 Deno.serve(async (request) => {
   // Запросы принимаем только от Telegram: он присылает секрет, указанный в setWebhook
   if (!SECRET || request.headers.get("x-telegram-bot-api-secret-token") !== SECRET) {
+    console.error("Запрос отклонён: секрет не совпадает. TELEGRAM_WEBHOOK_SECRET в Supabase должен быть таким же, как secret_token в setWebhook");
     return new Response("forbidden", { status: 403 });
   }
   const update = await request.json().catch(() => null);
   const msg = update?.message;
   if (msg?.chat?.type === "private" && msg.from && !msg.from.is_bot) {
+    console.log("Сообщение от", msg.from.id, (msg.text ?? msg.caption ?? "[файл]").slice(0, 40));
     try { await handle(msg); } catch (e) { console.error(e); }
   }
   return new Response("ok"); // всегда 200, иначе Telegram будет повторять одно и то же сообщение

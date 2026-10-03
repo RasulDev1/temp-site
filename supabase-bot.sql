@@ -19,6 +19,16 @@ returns text language sql immutable set search_path = '' as $$
   select 'https://rasuldev1.github.io/temp-site/'
 $$;
 
+-- Какой заказ покупатель выбрал в боте («Мои заказы» → нажал на заказ): туда уходят его следующие сообщения
+create table if not exists public.bot_chat_state (
+  telegram_id bigint primary key,
+  order_id    bigint,
+  updated_at  timestamptz not null default now()
+);
+revoke all on public.bot_chat_state from anon, authenticated;
+grant all on public.bot_chat_state to service_role;
+alter table public.bot_chat_state enable row level security;
+
 -- ---------- 1. Кто пишет в чат: покупатель на сайте, покупатель через бота или сотрудник ----------
 create or replace function public.order_messages_before_insert()
 returns trigger language plpgsql security definer set search_path = '' as $$
@@ -86,7 +96,10 @@ begin
   if owner is null or token is null or token = 'ВСТАВЬТЕ_ТОКЕН_БОТА' then return null; end if;
   txt := '💬 Заказ №' || new.order_id || E'\nМенеджер: ' || coalesce(new.body, '')
       || case when new.file_name is not null then E'\n📎 Файл «' || new.file_name || '» — откройте заказ в магазине' else '' end
-      || E'\n\nЧтобы ответить, просто напишите сюда — сообщение попадёт менеджеру. Можно прислать фото или PDF чека.';
+      || E'\n\nЧтобы ответить, просто напишите сюда — сообщение уйдёт менеджеру по этому заказу. Можно прислать фото или PDF чека.';
+  -- менеджер написал по этому заказу — ответ покупателя в боте уйдёт сюда же
+  insert into public.bot_chat_state (telegram_id, order_id) values (owner, new.order_id)
+  on conflict (telegram_id) do update set order_id = excluded.order_id, updated_at = now();
   begin
     perform net.http_post(
       url := 'https://api.telegram.org/bot' || token || '/sendMessage',
@@ -106,4 +119,5 @@ notify pgrst, 'reload schema';
 
 -- ---------- Проверка: должно быть «true» ----------
 select exists (select 1 from pg_extension where extname = 'pg_net')           as "отправка из базы включена",
-       exists (select 1 from pg_proc where proname = 'bot_customer_message') as "приём сообщений из бота готов";
+       exists (select 1 from pg_proc where proname = 'bot_customer_message') as "приём сообщений из бота готов",
+       exists (select 1 from pg_tables where tablename = 'bot_chat_state')    as "выбор заказа в боте готов";

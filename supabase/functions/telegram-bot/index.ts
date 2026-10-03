@@ -50,12 +50,13 @@ const shopButtons = () => ({
 const reply = (chatId: number, text: string, buttons = false) =>
   tg("sendMessage", { chat_id: chatId, text, ...(buttons ? { reply_markup: shopButtons() } : {}) });
 
-/* Постоянные кнопки под полем ввода. Нажатие присылает их текст боту — это команды, менеджеру они не уходят.
-   (Мини-приложение с такой кнопки не открываем: Telegram не передаёт тогда данные входа, и заказы бы не загрузились.) */
-const BTN_SHOP = "🛍 Магазин";
+/* Постоянная кнопка под полем ввода. Нажатие присылает её текст боту — это команда, менеджеру не уходит.
+   Магазин открывает кнопка меню «Магазин» слева от поля ввода: с кнопки под полем ввода Telegram
+   не передаёт мини-приложению данные покупателя, и заказы бы не загрузились. */
+const BTN_SHOP = "🛍 Магазин"; // была у первых покупателей — по-прежнему понимаем
 const BTN_ORDERS = "📦 Мои заказы";
 const mainKeyboard = {
-  keyboard: [[{ text: BTN_SHOP }, { text: BTN_ORDERS }]],
+  keyboard: [[{ text: BTN_ORDERS }]],
   resize_keyboard: true,
   is_persistent: true,
   input_field_placeholder: "Сообщение менеджеру…",
@@ -67,36 +68,49 @@ const STATUS: Record<string, string> = {
 };
 const rub = (n: number) => `${Math.round(Number(n) || 0).toLocaleString("ru-RU")} ₽`;
 
-/** «Мои заказы» прямо в чате: последние заказы со статусом, составом и реквизитами для оплаты */
+const ACTIVE = ["new", "awaiting_payment", "paid"];
+const OPEN = ["awaiting_payment", "paid"]; // по этим заказам можно писать менеджеру
+
+/** «Мои заказы»: только активные заказы, кнопкой на каждый — нажал, и сообщения уходят менеджеру по этому заказу */
 async function sendOrders(chatId: number, userId: number) {
-  const { data: orders, error } = await db.from("orders")
-    .select("id,status,total,items,payment_details,manager_note")
-    .eq("user_id", userId).order("id", { ascending: false }).limit(5);
+  const { data: orders, error } = await db.from("orders").select("id,status,total")
+    .eq("user_id", userId).in("status", ACTIVE).order("id", { ascending: false }).limit(10);
   if (error) {
     console.error("orders", error);
     return reply(chatId, "Не удалось загрузить заказы. Попробуйте ещё раз через минуту.");
   }
-  if (!orders?.length) return reply(chatId, "У вас пока нет заказов. Выберите что-нибудь в магазине:", true);
-  const lines = orders.map((o: Json) => {
-    const items = (Array.isArray(o.items) ? o.items : [])
-      .map((l: Json) => `   • ${l.name}, ${l.colorName}, ${l.size} — ${l.qty} шт.`).join("\n");
-    let text = `№${o.id} · ${STATUS[o.status] ?? o.status} · ${rub(o.total)}\n${items}`;
-    if (o.status === "awaiting_payment" && o.payment_details) {
-      text += `\n   Реквизиты для оплаты: ${o.payment_details}`;
-      if (o.manager_note) text += `\n   ${o.manager_note}`;
-    }
-    if (o.status === "cancelled" && o.manager_note) text += `\n   ${o.manager_note}`;
-    return text;
-  });
-  const open = orders.some((o: Json) => o.status === "awaiting_payment" || o.status === "paid");
-  const footer = open
-    ? "\n\nЧтобы написать менеджеру, просто отправьте сообщение в этот чат — можно приложить фото или PDF чека."
-    : "";
+  if (!orders?.length) return reply(chatId, "Активных заказов нет. Выберите что-нибудь в магазине:", true);
   return tg("sendMessage", {
     chat_id: chatId,
-    text: `Ваши заказы:\n\n${lines.join("\n\n")}${footer}`.slice(0, 4000),
-    reply_markup: { inline_keyboard: [[{ text: "📦 Открыть заказы в магазине", web_app: { url: `${SHOP_URL}?tab=orders` } }]] },
+    text: "Ваши активные заказы. Нажмите на заказ, чтобы посмотреть его и написать менеджеру:",
+    reply_markup: {
+      inline_keyboard: orders.map((o: Json) => [{
+        text: `№${o.id} · ${STATUS[o.status] ?? o.status} · ${rub(o.total)}`, callback_data: `order:${o.id}`,
+      }]),
+    },
   });
+}
+
+/** Покупатель нажал на заказ: показываем его и запоминаем — следующие сообщения уйдут менеджеру по нему */
+async function chooseOrder(chatId: number, userId: number, orderId: number) {
+  const { data: o } = await db.from("orders")
+    .select("id,status,total,items,payment_details,manager_note")
+    .eq("id", orderId).eq("user_id", userId).maybeSingle();
+  if (!o || !ACTIVE.includes(o.status)) return reply(chatId, "Этот заказ уже закрыт. Откройте «📦 Мои заказы» ещё раз.");
+  const items = (Array.isArray(o.items) ? o.items : [])
+    .map((l: Json) => `• ${l.name}, ${l.colorName}, ${l.size} — ${l.qty} шт.`).join("\n");
+  let text = `💬 Заказ №${o.id} · ${STATUS[o.status] ?? o.status} · ${rub(o.total)}\n${items}`;
+  if (o.status === "awaiting_payment" && o.payment_details) {
+    text += `\n\nРеквизиты для оплаты: ${o.payment_details}`;
+    if (o.manager_note) text += `\n${o.manager_note}`;
+  }
+  if (OPEN.includes(o.status)) {
+    await db.from("bot_chat_state").upsert({ telegram_id: userId, order_id: o.id, updated_at: new Date().toISOString() });
+    text += "\n\nНапишите сообщение — оно уйдёт менеджеру по этому заказу. Можно прислать фото или PDF чека.";
+  } else {
+    text += "\n\nМенеджер ещё не принял заказ. Переписка откроется, когда он пришлёт реквизиты для оплаты.";
+  }
+  return tg("sendMessage", { chat_id: chatId, text: text.slice(0, 4000) });
 }
 
 /** Файл из Telegram → base64 для чата заказа. null — файл слишком большой. */
@@ -130,8 +144,8 @@ async function handle(msg: Json) {
     await tg("sendMessage", {
       chat_id: chatId,
       text: "Здравствуйте! Это магазин ТЕМП — мужская одежда для бега, зала и улицы.\n\n" +
-        "Кнопки внизу: «Магазин» — открыть каталог, «Мои заказы» — статусы и реквизиты прямо здесь.\n" +
-        "Когда менеджер примет заказ, переписывайтесь с ним прямо в этом чате и присылайте чек об оплате.",
+        "«Магазин» слева от поля ввода — открыть каталог. «📦 Мои заказы» внизу — ваши активные заказы: " +
+        "нажмите на заказ, чтобы написать менеджеру и прислать чек об оплате.",
       reply_markup: mainKeyboard,
     });
     return reply(chatId, "Открыть магазин:", true);
@@ -152,9 +166,14 @@ async function handle(msg: Json) {
   }
   if (!text && !file) return reply(chatId, "Отправьте текст, фото или PDF — сообщение попадёт менеджеру.");
 
-  // Ответ на сообщение бота «Заказ №…» — пишем именно по этому заказу
+  // По какому заказу: ответ на сообщение бота «Заказ №…», иначе заказ, выбранный в «Мои заказы»
+  // (или тот, по которому последним писал менеджер), иначе последний принятый
   const quoted = msg.reply_to_message?.text ?? msg.reply_to_message?.caption ?? "";
-  const orderId = Number(/Заказ №(\d+)/.exec(quoted)?.[1]) || null;
+  let orderId = Number(/Заказ №(\d+)/.exec(quoted)?.[1]) || null;
+  if (!orderId) {
+    const { data: chosen } = await db.from("bot_chat_state").select("order_id").eq("telegram_id", msg.from.id).maybeSingle();
+    orderId = chosen?.order_id ?? null;
+  }
 
   const { data, error } = await db.rpc("bot_customer_message", {
     p_telegram_id: msg.from.id, p_order_id: orderId, p_body: text || null,
@@ -176,6 +195,14 @@ Deno.serve(async (request) => {
     return new Response("forbidden", { status: 403 });
   }
   const update = await request.json().catch(() => null);
+  // Нажатие на заказ в списке «Мои заказы»
+  const callback = update?.callback_query;
+  if (callback?.from && callback.message?.chat?.type === "private") {
+    await tg("answerCallbackQuery", { callback_query_id: callback.id }).catch(() => {});
+    const orderId = Number(/^order:(\d+)$/.exec(callback.data ?? "")?.[1]);
+    if (orderId) try { await chooseOrder(callback.message.chat.id, callback.from.id, orderId); } catch (e) { console.error(e); }
+    return new Response("ok");
+  }
   const msg = update?.message;
   if (msg?.chat?.type === "private" && msg.from && !msg.from.is_bot) {
     console.log("Сообщение от", msg.from.id, (msg.text ?? msg.caption ?? "[файл]").slice(0, 40));

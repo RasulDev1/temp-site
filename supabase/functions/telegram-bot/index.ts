@@ -148,7 +148,7 @@ async function handle(msg: Json) {
         "нажмите на заказ, чтобы написать менеджеру и прислать чек об оплате.",
       reply_markup: mainKeyboard,
     });
-    return reply(chatId, "Открыть магазин:", true);
+    return;
   }
   if (text === BTN_SHOP || /^\/shop\b/.test(text)) return reply(chatId, "Открыть магазин:", true);
   if (text === BTN_ORDERS || /^\/orders\b/.test(text)) return sendOrders(chatId, msg.from.id);

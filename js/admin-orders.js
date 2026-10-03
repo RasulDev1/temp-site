@@ -123,11 +123,11 @@ function renderOrders() {
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Заказы</h2>
     <p class="adm-sub">${state.adminOrders.length
       ? `${n ? `${n} ${pluralize(n, "новый заказ ждёт", "новых заказа ждут", "новых заказов ждут")} решения.` : "Новых заказов нет."} Принятый заказ — покупатель получает реквизиты для оплаты, отказ — сообщение, товар возвращается на склад.`
-      : "Заказов пока нет. Когда покупатель оформит заказ, он появится здесь."}</p>
+      : "Список пуст. Новые заказы появятся здесь сами."}</p>
     ${listToolsHtml()}
-    ${state.adminOrders.length ? `<div class="order-groups" role="tablist">${groups.map(([id, title]) =>
+    <div class="order-groups" role="tablist">${groups.map(([id, title]) =>
       `<button class="chip" role="tab" data-staff-group="${id}" aria-pressed="${id === staffGroup}">${title} · ${counts[id]}</button>`).join("")}</div>
-    ${list.length ? list.map(orderHtml).join("") : `<p class="adm-sub" style="margin-top:12px">${GROUP_EMPTY[staffGroup] || ""}</p>`}` : ""}`;
+    ${list.length ? list.map(orderHtml).join("") : `<p class="adm-sub" style="margin-top:12px">${GROUP_EMPTY[staffGroup] || ""}</p>`}`;
 }
 
 export function openAdminOrders(focusNum) {

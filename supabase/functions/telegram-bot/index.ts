@@ -50,6 +50,55 @@ const shopButtons = () => ({
 const reply = (chatId: number, text: string, buttons = false) =>
   tg("sendMessage", { chat_id: chatId, text, ...(buttons ? { reply_markup: shopButtons() } : {}) });
 
+/* Постоянные кнопки под полем ввода. Нажатие присылает их текст боту — это команды, менеджеру они не уходят.
+   (Мини-приложение с такой кнопки не открываем: Telegram не передаёт тогда данные входа, и заказы бы не загрузились.) */
+const BTN_SHOP = "🛍 Магазин";
+const BTN_ORDERS = "📦 Мои заказы";
+const mainKeyboard = {
+  keyboard: [[{ text: BTN_SHOP }, { text: BTN_ORDERS }]],
+  resize_keyboard: true,
+  is_persistent: true,
+  input_field_placeholder: "Сообщение менеджеру…",
+};
+
+const STATUS: Record<string, string> = {
+  new: "⏳ ждёт подтверждения", awaiting_payment: "💳 принят, ждёт оплаты", paid: "✅ оплачен, готовим",
+  delivered: "📦 вручён", cancelled: "✖️ отменён",
+};
+const rub = (n: number) => `${Math.round(Number(n) || 0).toLocaleString("ru-RU")} ₽`;
+
+/** «Мои заказы» прямо в чате: последние заказы со статусом, составом и реквизитами для оплаты */
+async function sendOrders(chatId: number, userId: number) {
+  const { data: orders, error } = await db.from("orders")
+    .select("id,status,total,items,payment_details,manager_note")
+    .eq("user_id", userId).order("id", { ascending: false }).limit(5);
+  if (error) {
+    console.error("orders", error);
+    return reply(chatId, "Не удалось загрузить заказы. Попробуйте ещё раз через минуту.");
+  }
+  if (!orders?.length) return reply(chatId, "У вас пока нет заказов. Выберите что-нибудь в магазине:", true);
+  const lines = orders.map((o: Json) => {
+    const items = (Array.isArray(o.items) ? o.items : [])
+      .map((l: Json) => `   • ${l.name}, ${l.colorName}, ${l.size} — ${l.qty} шт.`).join("\n");
+    let text = `№${o.id} · ${STATUS[o.status] ?? o.status} · ${rub(o.total)}\n${items}`;
+    if (o.status === "awaiting_payment" && o.payment_details) {
+      text += `\n   Реквизиты для оплаты: ${o.payment_details}`;
+      if (o.manager_note) text += `\n   ${o.manager_note}`;
+    }
+    if (o.status === "cancelled" && o.manager_note) text += `\n   ${o.manager_note}`;
+    return text;
+  });
+  const open = orders.some((o: Json) => o.status === "awaiting_payment" || o.status === "paid");
+  const footer = open
+    ? "\n\nЧтобы написать менеджеру, просто отправьте сообщение в этот чат — можно приложить фото или PDF чека."
+    : "";
+  return tg("sendMessage", {
+    chat_id: chatId,
+    text: `Ваши заказы:\n\n${lines.join("\n\n")}${footer}`.slice(0, 4000),
+    reply_markup: { inline_keyboard: [[{ text: "📦 Открыть заказы в магазине", web_app: { url: `${SHOP_URL}?tab=orders` } }]] },
+  });
+}
+
 /** Файл из Telegram → base64 для чата заказа. null — файл слишком большой. */
 async function download(fileId: string, type: string, name: string) {
   const info = await tg("getFile", { file_id: fileId });
@@ -75,11 +124,20 @@ async function handle(msg: Json) {
   const chatId: number = msg.chat.id;
   const text: string = (msg.text ?? msg.caption ?? "").trim();
 
-  if (/^\/(start|shop|orders|help)\b/.test(text)) {
-    return reply(chatId, "Здравствуйте! Это магазин ТЕМП — мужская одежда для бега, зала и улицы.\n\n" +
-      "Здесь можно открыть магазин и свои заказы, а после того как менеджер примет заказ — переписываться с ним прямо в этом чате " +
-      "и присылать чек об оплате.", true);
+  if (/^\/(start|help)\b/.test(text)) {
+    // кнопка «Магазин» слева от поля ввода — открывает мини-приложение в одно нажатие
+    await tg("setChatMenuButton", { chat_id: chatId, menu_button: { type: "web_app", text: "Магазин", web_app: { url: SHOP_URL } } });
+    await tg("sendMessage", {
+      chat_id: chatId,
+      text: "Здравствуйте! Это магазин ТЕМП — мужская одежда для бега, зала и улицы.\n\n" +
+        "Кнопки внизу: «Магазин» — открыть каталог, «Мои заказы» — статусы и реквизиты прямо здесь.\n" +
+        "Когда менеджер примет заказ, переписывайтесь с ним прямо в этом чате и присылайте чек об оплате.",
+      reply_markup: mainKeyboard,
+    });
+    return reply(chatId, "Открыть магазин:", true);
   }
+  if (text === BTN_SHOP || /^\/shop\b/.test(text)) return reply(chatId, "Открыть магазин:", true);
+  if (text === BTN_ORDERS || /^\/orders\b/.test(text)) return sendOrders(chatId, msg.from.id);
 
   // Файл: фото (берём самое крупное) или документ PDF / картинка
   let file: { name: string; type: string; data: string } | null = null;

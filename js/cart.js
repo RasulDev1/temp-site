@@ -172,7 +172,7 @@ function showOrderPlaced(num, note = "Когда менеджер провери
   sheetBody.innerHTML = `<div class="grab"></div><div class="done">
     <div class="finish" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
     <svg class="check" viewBox="0 0 54 54" aria-hidden="true"><circle cx="27" cy="27" r="27"/><path d="M16 28 L24 36 L39 19"/></svg>
-    <p class="big">Заказ №${num} принят</p>
+    <p class="big">Заказ оформлен</p>
     <p class="p-desc">${note}</p>
     <button class="primary" id="showMyOrders">Мои заказы</button></div>`;
   sheetBody.onclick = (e) => { if (e.target.id === "showMyOrders") { closeSheet(); setTab("orders"); } };

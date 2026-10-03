@@ -35,7 +35,7 @@ async function tg(method: string, body: Json): Promise<Json> {
   });
   const result = await response.json().catch(() => ({}));
   // Ошибки Telegram — в логи функции: неверный токен даёт 401 Unauthorized, заблокированный бот — 403
-  if (!result?.ok && method !== "setMessageReaction") console.error(`Telegram ${method}:`, result?.error_code, result?.description);
+  if (!result?.ok) console.error(`Telegram ${method}:`, result?.error_code, result?.description);
   return result;
 }
 
@@ -166,10 +166,7 @@ async function handle(msg: Json) {
   }
   if (data?.error === "no_open_order") return reply(chatId, NO_ORDER, true);
   if (data?.error) return reply(chatId, ERRORS[data.error] ?? "Не удалось передать сообщение. Попробуйте ещё раз через минуту.");
-
-  // Доставлено — отметка на сообщении покупателя
-  const reacted = await tg("setMessageReaction", { chat_id: chatId, message_id: msg.message_id, reaction: [{ type: "emoji", emoji: "👌" }] });
-  if (!reacted?.ok) await reply(chatId, `✓ Передано менеджеру (заказ №${data.order_id})`);
+  // Сообщение передано менеджеру — бот ничего не отвечает
 }
 
 Deno.serve(async (request) => {

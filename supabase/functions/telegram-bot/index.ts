@@ -39,16 +39,11 @@ async function tg(method: string, body: Json): Promise<Json> {
   return result;
 }
 
-/** Кнопки «Открыть магазин» и «Мои заказы» — открывают мини-приложение внутри Telegram */
-const shopButtons = () => ({
-  inline_keyboard: [
-    [{ text: "🛍 Открыть магазин", web_app: { url: SHOP_URL } }],
-    [{ text: "📦 Мои заказы", web_app: { url: `${SHOP_URL}?tab=orders` } }],
-  ],
-});
+/** Кнопка «Открыть магазин» под сообщением — открывает мини-приложение внутри Telegram */
+const shopButton = { inline_keyboard: [[{ text: "🛍 Открыть магазин", web_app: { url: SHOP_URL } }]] };
 
-const reply = (chatId: number, text: string, buttons = false) =>
-  tg("sendMessage", { chat_id: chatId, text, ...(buttons ? { reply_markup: shopButtons() } : {}) });
+const reply = (chatId: number, text: string, withShop = false) =>
+  tg("sendMessage", { chat_id: chatId, text, ...(withShop ? { reply_markup: shopButton } : {}) });
 
 /* Постоянная кнопка под полем ввода. Нажатие присылает её текст боту — это команда, менеджеру не уходит.
    Магазин открывает кнопка меню «Магазин» слева от поля ввода: с кнопки под полем ввода Telegram
@@ -59,56 +54,78 @@ const mainKeyboard = {
   keyboard: [[{ text: BTN_ORDERS }]],
   resize_keyboard: true,
   is_persistent: true,
-  input_field_placeholder: "Сообщение менеджеру…",
+  input_field_placeholder: "Напишите сообщение…",
 };
 
+/** Статус заказа — так, как его поймёт покупатель */
 const STATUS: Record<string, string> = {
-  new: "⏳ ждёт подтверждения", awaiting_payment: "💳 принят, ждёт оплаты", paid: "✅ оплачен, готовим",
-  delivered: "📦 вручён", cancelled: "✖️ отменён",
+  new: "🕐 Проверяем наличие", awaiting_payment: "💳 Ждём оплату", paid: "✅ Оплачен, готовим заказ",
+  delivered: "📦 Вручён", cancelled: "✖️ Отменён",
 };
 const rub = (n: number) => `${Math.round(Number(n) || 0).toLocaleString("ru-RU")} ₽`;
+/** «3 октября» — дата оформления по времени магазина (Краснодар) */
+const day = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: "Europe/Moscow" });
+const itemsOf = (o: Json): Json[] => (Array.isArray(o.items) ? o.items : []);
 
 const ACTIVE = ["new", "awaiting_payment", "paid"];
 const OPEN = ["awaiting_payment", "paid"]; // по этим заказам можно писать менеджеру
 
+/** Кнопка заказа в списке: дата, что заказано, статус. Без номера. */
+function orderButton(o: Json) {
+  const items = itemsOf(o);
+  const first = String(items[0]?.name ?? "Заказ");
+  const what = (first.length > 22 ? first.slice(0, 21) + "…" : first) + (items.length > 1 ? ` и ещё ${items.length - 1}` : "");
+  return `${day(o.created_at)} · ${what} · ${STATUS[o.status] ?? ""}`;
+}
+
 /** «Мои заказы»: только активные заказы, кнопкой на каждый — нажал, и сообщения уходят менеджеру по этому заказу */
 async function sendOrders(chatId: number, userId: number) {
-  const { data: orders, error } = await db.from("orders").select("id,status,total")
+  const { data: orders, error } = await db.from("orders").select("id,status,items,created_at")
     .eq("user_id", userId).in("status", ACTIVE).order("id", { ascending: false }).limit(10);
   if (error) {
     console.error("orders", error);
-    return reply(chatId, "Не удалось загрузить заказы. Попробуйте ещё раз через минуту.");
+    return reply(chatId, "Не получилось загрузить заказы 😔 Попробуйте, пожалуйста, ещё раз через минуту.");
   }
-  if (!orders?.length) return reply(chatId, "Активных заказов нет. Выберите что-нибудь в магазине:", true);
+  if (!orders?.length) {
+    return reply(chatId, "Сейчас у вас нет активных заказов.\n\nЗагляните в каталог — новинки уже ждут 👇", true);
+  }
   return tg("sendMessage", {
     chat_id: chatId,
-    text: "Ваши активные заказы. Нажмите на заказ, чтобы посмотреть его и написать менеджеру:",
-    reply_markup: {
-      inline_keyboard: orders.map((o: Json) => [{
-        text: `№${o.id} · ${STATUS[o.status] ?? o.status} · ${rub(o.total)}`, callback_data: `order:${o.id}`,
-      }]),
-    },
+    text: orders.length === 1 ? "Ваш заказ 👇 Нажмите, чтобы посмотреть детали и написать менеджеру."
+      : "Ваши заказы 👇 Нажмите на нужный, чтобы посмотреть детали и написать менеджеру.",
+    reply_markup: { inline_keyboard: orders.map((o: Json) => [{ text: orderButton(o), callback_data: `order:${o.id}` }]) },
   });
 }
 
-/** Покупатель нажал на заказ: показываем его и запоминаем — следующие сообщения уйдут менеджеру по нему */
+/** Фото того, что заказано: одно — фотографией, несколько — альбомом. Без фото (старые заказы) — ничего. */
+async function sendPhotos(chatId: number, items: Json[]) {
+  const photos = [...new Set(items.map((l) => l.photo).filter((u) => typeof u === "string" && u.startsWith("https://")))].slice(0, 10);
+  if (photos.length === 1) await tg("sendPhoto", { chat_id: chatId, photo: photos[0] });
+  else if (photos.length > 1) await tg("sendMediaGroup", { chat_id: chatId, media: photos.map((url) => ({ type: "photo", media: url })) });
+}
+
+/** Покупатель нажал на заказ: фото, дата, состав, статус. Запоминаем — следующие сообщения уйдут менеджеру по нему. */
 async function chooseOrder(chatId: number, userId: number, orderId: number) {
   const { data: o } = await db.from("orders")
-    .select("id,status,total,items,payment_details,manager_note")
+    .select("id,status,total,items,payment_details,manager_note,created_at")
     .eq("id", orderId).eq("user_id", userId).maybeSingle();
-  if (!o || !ACTIVE.includes(o.status)) return reply(chatId, "Этот заказ уже закрыт. Откройте «📦 Мои заказы» ещё раз.");
-  const items = (Array.isArray(o.items) ? o.items : [])
-    .map((l: Json) => `• ${l.name}, ${l.colorName}, ${l.size} — ${l.qty} шт.`).join("\n");
-  let text = `💬 Заказ №${o.id} · ${STATUS[o.status] ?? o.status} · ${rub(o.total)}\n${items}`;
+  if (!o || !ACTIVE.includes(o.status)) {
+    return reply(chatId, "Этот заказ уже завершён. Нажмите «📦 Мои заказы», чтобы увидеть актуальные.");
+  }
+  const items = itemsOf(o);
+  await sendPhotos(chatId, items);
+  const lines = items.map((l) => `• ${l.name} — ${String(l.colorName ?? "").toLowerCase()}, размер ${l.size}${Number(l.qty) > 1 ? `, ${l.qty} шт.` : ""}`);
+  let text = `🛍 Ваш заказ от ${day(o.created_at)}\n\n${lines.join("\n")}\n\nСумма: ${rub(o.total)}\nСтатус: ${STATUS[o.status] ?? o.status}`;
   if (o.status === "awaiting_payment" && o.payment_details) {
-    text += `\n\nРеквизиты для оплаты: ${o.payment_details}`;
-    if (o.manager_note) text += `\n${o.manager_note}`;
+    text += `\n\n💳 Реквизиты для оплаты:\n${o.payment_details}`;
+    if (o.manager_note) text += `\n\n${o.manager_note}`;
+    text += "\n\nПосле оплаты пришлите сюда, пожалуйста, чек — фото или скриншот.";
   }
   if (OPEN.includes(o.status)) {
     await db.from("bot_chat_state").upsert({ telegram_id: userId, order_id: o.id, updated_at: new Date().toISOString() });
-    text += "\n\nНапишите сообщение — оно уйдёт менеджеру по этому заказу. Можно прислать фото или PDF чека.";
+    text += "\n\n✍️ Есть вопрос? Просто напишите сюда — менеджер ответит в этом чате.";
   } else {
-    text += "\n\nМенеджер ещё не принял заказ. Переписка откроется, когда он пришлёт реквизиты для оплаты.";
+    text += "\n\nМенеджер проверяет, всё ли есть в наличии. Как только заказ будет подтверждён, реквизиты для оплаты появятся в «📦 Мои заказы».";
   }
   return tg("sendMessage", { chat_id: chatId, text: text.slice(0, 4000) });
 }
@@ -125,14 +142,15 @@ async function download(fileId: string, type: string, name: string) {
   return { name: name.slice(-150), type, data: encodeBase64(bytes) };
 }
 
-const NO_ORDER = "Переписка с менеджером откроется, когда он примет ваш заказ и пришлёт реквизиты. " +
-  "Оформить заказ и посмотреть статус можно в магазине:";
+const NO_ORDER = "Написать менеджеру можно, когда он подтвердит ваш заказ — обычно это быстро 🙂\n\n" +
+  "Статус заказа всегда можно посмотреть в «📦 Мои заказы». Если заказа ещё нет — загляните в каталог:";
 
 const ERRORS: Record<string, string> = {
-  too_many: "Слишком много сообщений подряд. Подождите несколько минут.",
-  too_many_files: "К этому заказу уже прикреплено много файлов. Напишите менеджеру текстом.",
-  closed: "Этот заказ уже закрыт, писать по нему нельзя.",
+  too_many: "Вы отправили много сообщений подряд — передохнём пару минут, и можно продолжить 🙂",
+  too_many_files: "К этому заказу уже прикреплено много файлов. Опишите, пожалуйста, вопрос текстом.",
+  closed: "Этот заказ уже завершён. Нажмите «📦 Мои заказы», чтобы выбрать актуальный.",
 };
+const SEND_FAILED = "Не получилось отправить сообщение 😔 Попробуйте, пожалуйста, ещё раз через минуту.";
 
 async function handle(msg: Json) {
   const chatId: number = msg.chat.id;
@@ -143,31 +161,32 @@ async function handle(msg: Json) {
     await tg("setChatMenuButton", { chat_id: chatId, menu_button: { type: "web_app", text: "Магазин", web_app: { url: SHOP_URL } } });
     await tg("sendMessage", {
       chat_id: chatId,
-      text: "Здравствуйте! Это магазин ТЕМП — мужская одежда для бега, зала и улицы.\n\n" +
-        "«Магазин» слева от поля ввода — открыть каталог. «📦 Мои заказы» внизу — ваши активные заказы: " +
-        "нажмите на заказ, чтобы написать менеджеру и прислать чек об оплате.",
+      text: "Привет! Это ТЕМП — мужская одежда для бега, зала и улицы 🏃\n\n" +
+        "🛍 Каталог открывается кнопкой «Магазин» слева от поля ввода.\n" +
+        "📦 «Мои заказы» внизу — статус заказа, реквизиты для оплаты и связь с менеджером.\n\n" +
+        "Появился вопрос по заказу? Пишите прямо сюда — менеджер ответит.",
       reply_markup: mainKeyboard,
     });
     return;
   }
-  if (text === BTN_SHOP || /^\/shop\b/.test(text)) return reply(chatId, "Открыть магазин:", true);
+  if (text === BTN_SHOP || /^\/shop\b/.test(text)) return reply(chatId, "Каталог ТЕМП 👇", true);
   if (text === BTN_ORDERS || /^\/orders\b/.test(text)) return sendOrders(chatId, msg.from.id);
 
   // Файл: фото (берём самое крупное) или документ PDF / картинка
   let file: { name: string; type: string; data: string } | null = null;
   if (msg.photo?.length) {
     file = await download(msg.photo[msg.photo.length - 1].file_id, "image/jpeg", "фото.jpg");
-    if (!file) return reply(chatId, "Фото слишком большое. Отправьте его ещё раз в сжатом виде или скриншотом.");
+    if (!file) return reply(chatId, "Фото получилось слишком большим. Отправьте, пожалуйста, скриншот.");
   } else if (msg.document) {
     const type = msg.document.mime_type ?? "";
-    if (!FILE_TYPES.includes(type)) return reply(chatId, "Можно отправить фото, скриншот или PDF.");
+    if (!FILE_TYPES.includes(type)) return reply(chatId, "Такой файл не получится передать. Пришлите, пожалуйста, фото, скриншот или PDF.");
     file = await download(msg.document.file_id, type, msg.document.file_name ?? "файл");
-    if (!file) return reply(chatId, "Файл больше 3 МБ. Отправьте скриншот чека.");
+    if (!file) return reply(chatId, "Файл больше 3 МБ. Пришлите, пожалуйста, скриншот чека.");
   }
-  if (!text && !file) return reply(chatId, "Отправьте текст, фото или PDF — сообщение попадёт менеджеру.");
+  if (!text && !file) return reply(chatId, "Можно отправить текст, фото или PDF — всё передадим менеджеру.");
 
-  // По какому заказу: ответ на сообщение бота «Заказ №…», иначе заказ, выбранный в «Мои заказы»
-  // (или тот, по которому последним писал менеджер), иначе последний принятый
+  // По какому заказу: тот, что выбран в «Мои заказы» (или по которому последним писал менеджер),
+  // для старых сообщений с номером — по номеру, иначе последний подтверждённый
   const quoted = msg.reply_to_message?.text ?? msg.reply_to_message?.caption ?? "";
   let orderId = Number(/Заказ №(\d+)/.exec(quoted)?.[1]) || null;
   if (!orderId) {
@@ -181,10 +200,10 @@ async function handle(msg: Json) {
   });
   if (error) {
     console.error("bot_customer_message", error);
-    return reply(chatId, "Не удалось передать сообщение. Попробуйте ещё раз через минуту.");
+    return reply(chatId, SEND_FAILED);
   }
   if (data?.error === "no_open_order") return reply(chatId, NO_ORDER, true);
-  if (data?.error) return reply(chatId, ERRORS[data.error] ?? "Не удалось передать сообщение. Попробуйте ещё раз через минуту.");
+  if (data?.error) return reply(chatId, ERRORS[data.error] ?? SEND_FAILED);
   // Сообщение передано менеджеру — бот ничего не отвечает
 }
 

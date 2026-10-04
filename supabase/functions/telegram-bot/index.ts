@@ -78,8 +78,16 @@ function orderButton(o: Json) {
   return `${day(o.created_at)} · ${what} · ${STATUS[o.status] ?? ""}`;
 }
 
-/** «Мои заказы»: только активные заказы, кнопкой на каждый — нажал, и сообщения уходят менеджеру по этому заказу */
+/** Чат с менеджером закрыт: сообщения покупателя больше не уходят в чат заказа */
+const closeChat = (userId: number) => db.from("bot_chat_state").delete().eq("telegram_id", userId);
+const CLOSE_BUTTON = { inline_keyboard: [[{ text: "✖️ Закрыть чат", callback_data: "close" }]] };
+const CHAT_CLOSED = "Чат с менеджером закрыт — ваши сообщения больше не уходят менеджеру.\n\n" +
+  "Чтобы написать снова, откройте заказ в «📦 Мои заказы».";
+
+/** «Мои заказы»: только активные заказы, кнопкой на каждый — нажал, и сообщения уходят менеджеру по этому заказу.
+    Открытый до этого чат закрывается: пока покупатель не выберет заказ, сообщения никуда не уходят. */
 async function sendOrders(chatId: number, userId: number) {
+  await closeChat(userId);
   const { data: orders, error } = await db.from("orders").select("id,status,items,created_at")
     .eq("user_id", userId).in("status", ACTIVE).order("id", { ascending: false }).limit(10);
   if (error) {
@@ -97,11 +105,89 @@ async function sendOrders(chatId: number, userId: number) {
   });
 }
 
-/** Фото того, что заказано: одно — фотографией, несколько — альбомом. Без фото (старые заказы) — ничего. */
+/* ---------- Фото заказанных товаров ----------
+   Ссылку на фото сайт кладёт в заказ (items[].photo). У заказов, оформленных раньше или со старой
+   версии сайта, её нет — тогда ищем фото в каталоге: встроенные товары в js/data.js на сайте,
+   добавленные — в catalog_state. */
+const absolute = (path: string) => { try { return new URL(path, SHOP_URL).href; } catch { return ""; } };
+const PHOTO_EXPR = String.raw`(?:img\("([^"]+)"\)|"([^"]+)")`; // img("2") или "1-pants.jpg"
+const photoPath = (m: RegExpMatchArray, i: number) => (m[i] ? `img/products/${m[i]}.jpg` : m[i + 1]);
+
+let catalogPhotos: { at: number; map: Map<string, string> } | null = null;
+/** "id|#ЦВЕТ" и "id" → полная ссылка на фото. Кэш на 10 минут. */
+async function loadCatalogPhotos() {
+  if (catalogPhotos && Date.now() - catalogPhotos.at < 600_000) return catalogPhotos.map;
+  const map = new Map<string, string>();
+  try {
+    const source = await (await fetch(absolute("js/data.js"))).text();
+    for (const block of source.split(/(?=\{\s*id:\s*\d+,)/).slice(1)) {
+      const id = /^\{\s*id:\s*(\d+)/.exec(block)?.[1];
+      const main = new RegExp(String.raw`\bphoto:\s*` + PHOTO_EXPR).exec(block);
+      if (!id || !main) continue;
+      map.set(id, absolute(photoPath(main, 1)));
+      const colors = /colorPhotos:\s*\{([^}]*)\}/.exec(block)?.[1] ?? "";
+      for (const c of colors.matchAll(new RegExp(String.raw`"(#[0-9A-Fa-f]{6})":\s*` + PHOTO_EXPR, "g")))
+        map.set(`${id}|${c[1].toUpperCase()}`, absolute(photoPath(c, 2)));
+    }
+  } catch (e) { console.error("Фото встроенных товаров (js/data.js):", e); }
+  try {
+    const { data } = await db.from("catalog_state").select("data").eq("id", 1).maybeSingle();
+    for (const p of (data?.data?.products ?? []) as Json[]) {
+      const colors = (Array.isArray(p.colors) ? p.colors : []).filter((c: Json) => c?.hex && c?.image);
+      if (!p.num || !colors.length) continue;
+      map.set(String(p.num), absolute(colors[0].image));
+      for (const c of colors) map.set(`${p.num}|${String(c.hex).toUpperCase()}`, absolute(c.image));
+    }
+  } catch (e) { console.error("Фото добавленных товаров (catalog_state):", e); }
+  catalogPhotos = { at: Date.now(), map };
+  return map;
+}
+
+async function photoUrls(items: Json[]) {
+  const catalog = items.some((l) => !String(l.photo ?? "").startsWith("https://")) ? await loadCatalogPhotos() : null;
+  const urls = items.map((l) => {
+    if (typeof l.photo === "string" && l.photo.startsWith("https://")) return l.photo;
+    return catalog?.get(`${l.id}|${String(l.color ?? "").toUpperCase()}`) ?? catalog?.get(String(l.id)) ?? "";
+  });
+  return [...new Set(urls.filter((u) => u.startsWith("https://")))].slice(0, 10);
+}
+
+/** Скачиваем фото сами и отправляем файлом: так Telegram не нужно самому открывать сайт.
+    Не скачалось — отдаём Telegram ссылку. */
+async function sendPhotoFiles(chatId: number, urls: string[]) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  const media: Json[] = [];
+  for (const [i, url] of urls.entries()) {
+    const response = await fetch(url).catch(() => null);
+    const type = response?.headers.get("content-type") ?? "";
+    if (response?.ok && type.startsWith("image/")) {
+      form.append(`p${i}`, new Blob([await response.arrayBuffer()], { type }), `p${i}.${type.split("/")[1] || "jpg"}`);
+      media.push({ type: "photo", media: `attach://p${i}` });
+    } else {
+      console.error("Фото не скачалось:", url, response?.status);
+      media.push({ type: "photo", media: url });
+    }
+  }
+  let method = "sendMediaGroup";
+  if (media.length === 1) {
+    method = "sendPhoto";
+    const only = media[0].media as string;
+    if (only.startsWith("attach://")) { form.set("photo", form.get(only.slice(9)) as Blob, "photo.jpg"); form.delete(only.slice(9)); }
+    else form.set("photo", only);
+  } else form.append("media", JSON.stringify(media));
+  const response = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, { method: "POST", body: form });
+  const result = await response.json().catch(() => ({}));
+  if (!result?.ok) console.error(`Telegram ${method}:`, result?.error_code, result?.description);
+  return Boolean(result?.ok);
+}
+
+/** Фото того, что заказано: одно — фотографией, несколько — альбомом. Альбом не ушёл — по одной. */
 async function sendPhotos(chatId: number, items: Json[]) {
-  const photos = [...new Set(items.map((l) => l.photo).filter((u) => typeof u === "string" && u.startsWith("https://")))].slice(0, 10);
-  if (photos.length === 1) await tg("sendPhoto", { chat_id: chatId, photo: photos[0] });
-  else if (photos.length > 1) await tg("sendMediaGroup", { chat_id: chatId, media: photos.map((url) => ({ type: "photo", media: url })) });
+  const urls = await photoUrls(items);
+  if (!urls.length) return console.log("У заказа нет фото товаров");
+  if (await sendPhotoFiles(chatId, urls)) return;
+  if (urls.length > 1) for (const url of urls) await sendPhotoFiles(chatId, [url]);
 }
 
 /** Покупатель нажал на заказ: фото, дата, состав, статус. Запоминаем — следующие сообщения уйдут менеджеру по нему. */
@@ -123,11 +209,11 @@ async function chooseOrder(chatId: number, userId: number, orderId: number) {
   }
   if (OPEN.includes(o.status)) {
     await db.from("bot_chat_state").upsert({ telegram_id: userId, order_id: o.id, updated_at: new Date().toISOString() });
-    text += "\n\n✍️ Есть вопрос? Просто напишите сюда — менеджер ответит в этом чате.";
+    text += "\n\n✍️ Есть вопрос? Просто напишите сюда — менеджер ответит в этом чате. Закончили — нажмите «Закрыть чат».";
   } else {
     text += "\n\nМенеджер проверяет, всё ли есть в наличии. Как только заказ будет подтверждён, реквизиты для оплаты появятся в «📦 Мои заказы».";
   }
-  return tg("sendMessage", { chat_id: chatId, text: text.slice(0, 4000) });
+  return tg("sendMessage", { chat_id: chatId, text: text.slice(0, 4000), ...(OPEN.includes(o.status) ? { reply_markup: CLOSE_BUTTON } : {}) });
 }
 
 /** Файл из Telegram → base64 для чата заказа. null — файл слишком большой. */
@@ -142,6 +228,7 @@ async function download(fileId: string, type: string, name: string) {
   return { name: name.slice(-150), type, data: encodeBase64(bytes) };
 }
 
+const NO_CHAT = "Чтобы написать менеджеру, откройте заказ: нажмите «📦 Мои заказы» и выберите нужный заказ.";
 const NO_ORDER = "Написать менеджеру можно, когда он подтвердит ваш заказ — обычно это быстро 🙂\n\n" +
   "Статус заказа всегда можно посмотреть в «📦 Мои заказы». Если заказа ещё нет — загляните в каталог:";
 
@@ -186,13 +273,14 @@ async function handle(msg: Json) {
   if (!text && !file) return reply(chatId, "Можно отправить текст, фото или PDF — всё передадим менеджеру.");
 
   // По какому заказу: тот, что выбран в «Мои заказы» (или по которому последним писал менеджер),
-  // для старых сообщений с номером — по номеру, иначе последний подтверждённый
+  // для старых сообщений с номером — по номеру. Чат закрыт и заказ не выбран — менеджеру не отправляем.
   const quoted = msg.reply_to_message?.text ?? msg.reply_to_message?.caption ?? "";
   let orderId = Number(/Заказ №(\d+)/.exec(quoted)?.[1]) || null;
   if (!orderId) {
     const { data: chosen } = await db.from("bot_chat_state").select("order_id").eq("telegram_id", msg.from.id).maybeSingle();
     orderId = chosen?.order_id ?? null;
   }
+  if (!orderId) return tg("sendMessage", { chat_id: chatId, text: NO_CHAT, reply_markup: mainKeyboard });
 
   const { data, error } = await db.rpc("bot_customer_message", {
     p_telegram_id: msg.from.id, p_order_id: orderId, p_body: text || null,
@@ -220,6 +308,12 @@ Deno.serve(async (request) => {
     await tg("answerCallbackQuery", { callback_query_id: callback.id }).catch(() => {});
     const orderId = Number(/^order:(\d+)$/.exec(callback.data ?? "")?.[1]);
     if (orderId) try { await chooseOrder(callback.message.chat.id, callback.from.id, orderId); } catch (e) { console.error(e); }
+    if (callback.data === "close") try {
+      await closeChat(callback.from.id);
+      // кнопку под сообщением убираем, чтобы не нажимали повторно
+      await tg("editMessageReplyMarkup", { chat_id: callback.message.chat.id, message_id: callback.message.message_id, reply_markup: { inline_keyboard: [] } });
+      await reply(callback.message.chat.id, CHAT_CLOSED);
+    } catch (e) { console.error(e); }
     return new Response("ok");
   }
   const msg = update?.message;

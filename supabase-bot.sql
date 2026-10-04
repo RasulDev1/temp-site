@@ -88,15 +88,22 @@ grant execute on function public.bot_customer_message(bigint, bigint, text, text
 -- ---------- 3. Менеджер написал на сайте → бот отправляет покупателю ----------
 create or replace function public.order_messages_to_bot()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare owner bigint; token text; txt text;
+declare
+  owner bigint; created timestamptz; local_date timestamp; token text; txt text;
+  months text[] := array['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                         'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 begin
   if not new.from_staff then return null; end if;
-  select user_id into owner from public.orders where id = new.order_id;
+  select user_id, created_at into owner, created from public.orders where id = new.order_id;
   select decrypted_secret into token from vault.decrypted_secrets where name = 'telegram_bot_token' limit 1;
   if owner is null or token is null or token = 'ВСТАВЬТЕ_ТОКЕН_БОТА' then return null; end if;
-  txt := '💬 Заказ №' || new.order_id || E'\nМенеджер: ' || coalesce(new.body, '')
-      || case when new.file_name is not null then E'\n📎 Файл «' || new.file_name || '» — откройте заказ в магазине' else '' end
-      || E'\n\nЧтобы ответить, просто напишите сюда — сообщение уйдёт менеджеру по этому заказу. Можно прислать фото или PDF чека.';
+  local_date := created at time zone 'Europe/Moscow'; -- дата по времени магазина (Краснодар)
+  -- покупателю — без номера заказа: «заказ от 3 октября»
+  txt := '💬 Менеджер ТЕМП · заказ от ' || extract(day from local_date)::int || ' ' || months[extract(month from local_date)::int]
+      || case when coalesce(new.body, '') <> '' then E'\n\n' || new.body else '' end
+      || case when new.file_name is not null
+              then E'\n\n📎 Менеджер прислал файл «' || new.file_name || '» — его можно открыть в магазине, в чате заказа.' else '' end
+      || E'\n\nОтветить можно прямо здесь.';
   -- менеджер написал по этому заказу — ответ покупателя в боте уйдёт сюда же
   insert into public.bot_chat_state (telegram_id, order_id) values (owner, new.order_id)
   on conflict (telegram_id) do update set order_id = excluded.order_id, updated_at = now();

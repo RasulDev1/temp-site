@@ -95,6 +95,14 @@ const askWritePermission = () => new Promise((resolve) => {
   try { telegram.requestWriteAccess(() => resolve()); } catch { resolve(); }
 });
 
+/** Полная ссылка на фото товара в выбранном цвете — бот покажет его покупателю в «Мои заказы» */
+function photoLink(product, color) {
+  try {
+    const url = new URL(product.colorPhotos?.[color] || product.photo, location.href).href;
+    return url.startsWith("https://") ? url : undefined;
+  } catch { return undefined; }
+}
+
 let placingOrder = false;
 export async function placeOrder() {
   if (placingOrder) return;
@@ -106,7 +114,7 @@ export async function placeOrder() {
   }
   const items = state.cart.map((line) => {
     const p = findProduct(line.id);
-    return { ...line, name: p.name, colorName: colorName(p, line.color), price: p.price };
+    return { ...line, name: p.name, colorName: colorName(p, line.color), price: p.price, photo: photoLink(p, line.color) };
   });
   const order = { items, total: cartTotal(), name, phone, way: method.title, addr };
   const button = $("placeOrder");

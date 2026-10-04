@@ -158,7 +158,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .st-rejected .ord-st { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
 .ord-who { margin: 8px 0 0; font-weight: 600; }
 .ord-way { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
-.ord-items { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+.ord-items { margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.ord-items li { display: flex; align-items: center; gap: 10px; padding: 4px 0; text-align: left; }
+.ord-items .thumb { flex: none; width: 44px; height: 44px; border-radius: 10px; }
+.ord-items .thumb:empty { display: none; }
+.done .ord-items { max-width: 360px; margin: 14px auto 6px; }
+.order-lead { margin: 0; font-size: 16px; }
+.ord-top.my { align-items: flex-start; }
+.ord-top.my b { flex: 1; }
+.ord-top.my .ord-st { flex: none; }
 .ord-sum { margin: 8px 0 0; display: flex; justify-content: space-between; }
 .ord-sum b { font-family: var(--display); font-variant-numeric: tabular-nums; }
 .ord-actions { display: flex; gap: 8px; margin-top: 12px; }

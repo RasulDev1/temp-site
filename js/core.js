@@ -7,6 +7,8 @@ export const telegramUser = telegram?.initDataUnsafe?.user || null;
 export const $ = (id) => document.getElementById(id);
 export const formatPrice = (rubles) => rubles.toLocaleString("ru-RU") + "\u00A0₽";
 export const formatDate = (iso) => new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+/** Дата оформления заказа для покупателя: «4 октября в 12:40». Номер заказа покупателю не показываем. */
+export const orderDate = (iso) => new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 export const escapeHtml = (text) => String(text ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 export const pluralize = (n, one, few, many) =>
   n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many;

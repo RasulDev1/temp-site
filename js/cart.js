@@ -1,5 +1,5 @@
 // Корзина, оформление заказа и «Мои заказы» покупателя.
-import { $, telegram, telegramUser, formatPrice, formatDate, escapeHtml, haptic, toast, on, storage, replayAnimation, copyToClipboard, openLink } from "./core.js?v=20261001b";
+import { $, telegram, telegramUser, formatPrice, orderDate, escapeHtml, haptic, toast, on, storage, replayAnimation, copyToClipboard, openLink } from "./core.js?v=20261001b";
 import { DELIVERY_METHODS } from "./data.js?v=20261001b";
 import { state, api, saveCart, findProduct, cartTotal, hasServer, useSupabase, hasOrdersBackend } from "./state.js?v=20261001b";
 import { watchOrders } from "./supabase.js?v=20261001b";
@@ -127,7 +127,7 @@ export async function placeOrder() {
     rememberOrder({ ...order, num, date: new Date().toISOString(), status: "new" });
     state.cart = [];
     saveCart();
-    showOrderPlaced(num, useSupabase ? "Менеджер проверит наличие и пришлёт реквизиты прямо сюда, во вкладку «Мои заказы»." : undefined);
+    showOrderPlaced(items, useSupabase ? "Мы проверим наличие и пришлём реквизиты для оплаты сюда, во вкладку «Мои заказы». Статус обновится сам." : undefined);
     refreshCatalog(); // остатки изменились
   } catch (error) {
     haptic("medium");
@@ -173,14 +173,16 @@ function sendOrderToManager(order) {
   rememberOrder({ ...order, num, date: new Date().toISOString(), status: "new" });
   state.cart = [];
   saveCart();
-  showOrderPlaced(num, "Отправьте сообщение в открывшемся чате с менеджером — он подтвердит наличие и пришлёт реквизиты для оплаты. Текст заказа также скопирован.");
+  showOrderPlaced(order.items, "Отправьте сообщение в открывшемся чате с менеджером — он подтвердит наличие и пришлёт реквизиты для оплаты. Текст заказа также скопирован.");
 }
 
-function showOrderPlaced(num, note = "Когда менеджер проверит наличие, бот пришлёт в этот чат реквизиты для оплаты.") {
+function showOrderPlaced(items, note = "Когда менеджер проверит наличие, бот пришлёт в этот чат реквизиты для оплаты.") {
   sheetBody.innerHTML = `<div class="grab"></div><div class="done">
     <div class="finish" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
     <svg class="check" viewBox="0 0 54 54" aria-hidden="true"><circle cx="27" cy="27" r="27"/><path d="M16 28 L24 36 L39 19"/></svg>
-    <p class="big">Заказ оформлен</p>
+    <p class="big">Спасибо за заказ!</p>
+    <p class="order-lead">Дата оформления: ${orderDate(new Date())}<br>Вы выбрали:</p>
+    ${orderItemsHtml({ items })}
     <p class="p-desc">${note}</p>
     <button class="primary" id="showMyOrders">Мои заказы</button></div>`;
   sheetBody.onclick = (e) => { if (e.target.id === "showMyOrders") { closeSheet(); setTab("orders"); } };
@@ -189,7 +191,7 @@ function showOrderPlaced(num, note = "Когда менеджер провери
 }
 
 /* ---------- Мои заказы ---------- */
-const ORDER_STATUS = { new: "Ждёт подтверждения", accepted: "Принят, ждёт оплаты", paid: "Оплачен, готовим к отправке", delivered: "Вручён", rejected: "Отменён" };
+const ORDER_STATUS = { new: "Проверяем наличие", accepted: "Ждёт оплаты", paid: "Оплачен, готовим к отправке", delivered: "Вручён", rejected: "Отменён" };
 export const paymentDetails = (order) => order.payDetails || order.payUrl || "";
 const isPaymentLink = (text) => /^https:\/\/\S+$/.test(text.trim());
 
@@ -199,13 +201,21 @@ function rememberOrder(order) {
   storage.set("temp_my_orders", state.myOrders);
 }
 
+/** Фото позиции: товар из каталога в выбранном цвете, иначе фото, сохранённое в заказе (только https) */
+function orderLinePhoto(line) {
+  const product = findProduct(line.id);
+  if (product) return productImage(product, line.color, { thumb: true, lazy: true });
+  return /^https:\/\/\S+$/.test(line.photo || "") ? `<img class="ph" src="${escapeHtml(line.photo)}" alt="${escapeHtml(line.name)}" loading="lazy">` : "";
+}
+
 export const orderItemsHtml = (order) =>
-  `<ul class="ord-items">${(order.items || []).map((l) => `<li>${escapeHtml(l.name)}, ${escapeHtml(l.colorName)}, ${escapeHtml(l.size)} — ${Number(l.qty)} шт.</li>`).join("")}</ul>`;
+  `<ul class="ord-items">${(order.items || []).map((l) => `<li><span class="thumb">${orderLinePhoto(l)}</span>
+    <span>${escapeHtml(l.name)}, ${escapeHtml(l.colorName)}, размер ${escapeHtml(l.size)} — ${Number(l.qty)} шт.</span></li>`).join("")}</ul>`;
 
 function myOrderHtml(o) {
   const status = o.status || "new", details = paymentDetails(o), total = formatPrice(Number(o.total) || 0);
   return `<article class="ord st-${status}">
-    <div class="ord-top"><b>№${o.num}</b><span class="ord-st">${ORDER_STATUS[status]}</span><time>${formatDate(o.date)}</time></div>
+    <div class="ord-top my"><b>Заказ от ${orderDate(o.date)}</b><span class="ord-st">${ORDER_STATUS[status]}</span></div>
     ${orderItemsHtml(o)}
     <p class="ord-way">${escapeHtml(o.way)}${o.addr ? ": " + escapeHtml(o.addr) : ""}</p>
     <p class="ord-sum">Итого <b>${total}</b></p>
@@ -216,7 +226,7 @@ function myOrderHtml(o) {
     ${status === "rejected" && o.message ? `<p class="ord-note">${escapeHtml(o.message)}</p>` : ""}
     ${useSupabase && status === "accepted" ? `<p class="adm-sub" style="margin-top:10px">Оплатили? Отправьте чек менеджеру в чат.</p>` : ""}
     ${useSupabase ? chatButtonHtml(o, "customer") : ""}
-    ${status === "new" ? `<p class="adm-sub">${hasOrdersBackend ? "Менеджер проверит наличие и пришлёт реквизиты для оплаты. Статус обновится здесь сам." : "Статус заказа уточняйте у менеджера в Telegram."}</p>` : ""}
+    ${status === "new" ? `<p class="adm-sub">${hasOrdersBackend ? "Проверяем наличие. Как только всё подтвердим, здесь появятся реквизиты для оплаты." : "Статус заказа уточняйте у менеджера в Telegram."}</p>` : ""}
   </article>`;
 }
 
@@ -239,7 +249,7 @@ function myOrdersHtml() {
 export async function renderMyOrders(reload = false) {
   const page = $("ordersPage");
   const draw = () => (page.innerHTML = state.myOrders.length ? myOrdersHtml()
-    : emptyState("Заказов пока нет", "Здесь появятся ваши заказы и реквизиты для оплаты.", "goShopping"));
+    : emptyState("Заказов пока нет", "Здесь будут ваши заказы с фото товаров и реквизитами для оплаты.", "goShopping"));
   draw();
   if (!reload || !hasOrdersBackend) return;
   try {
@@ -282,6 +292,6 @@ function watchMyOrders() {
     if (onChatEvent(payload, "customer")) return renderMyOrders(true);
     await renderMyOrders(true);
     const order = state.myOrders.find((o) => o.num === Number(id));
-    if (op === "update" && order?.status === "accepted") { haptic("success"); toast(`Заказ №${order.num}: пришли реквизиты`); }
+    if (op === "update" && order?.status === "accepted") { haptic("success"); toast("Пришли реквизиты для оплаты заказа"); }
   }, () => renderMyOrders(true)); // после переподключения догружаем пропущенное
 }

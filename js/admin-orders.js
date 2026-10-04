@@ -21,8 +21,8 @@ let archivedCount = 0;
 let canArchive = false;   // в базе настроены скрытые заказы
 
 const newOrdersCount = () => state.adminOrders.filter((o) => o.status === "new").length;
-const rejectionText = (num) =>
-  `Здравствуйте! К сожалению, товара из заказа №${num} сейчас нет в наличии. Приносим извинения. Будем рады видеть вас снова в ТЕМП.`;
+const rejectionText = (order) =>
+  `Здравствуйте! К сожалению, ${(order?.items || []).map((l) => l.name).join(", ") || "товара из вашего заказа"} сейчас нет в наличии, поэтому мы отменили заказ. Приносим извинения и будем рады помочь подобрать замену: просто напишите нам.`;
 
 export async function loadAdminOrders() {
   try {
@@ -160,7 +160,7 @@ async function onOrdersClick(e) {
   if (group) { if (group !== staffGroup) { haptic(); staffGroup = group; renderOrders(); } return; }
   if (t.dataset.deliver) return markDelivered(t);
   if (t.dataset.accept) openForm = { num: Number(t.dataset.accept), type: "accept", text: storage.get("temp_last_pay", "") };
-  else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(t.dataset.reject) };
+  else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(state.adminOrders.find((o) => o.num === Number(t.dataset.reject))) };
   else if (t.hasAttribute("data-cancel")) openForm = null;
   else if (t.dataset.send) return sendDecision(t);
   else if (t.dataset.paid) return markPaid(t);

@@ -1,7 +1,7 @@
 // Переписка по заказу (Supabase): покупатель и менеджер пишут друг другу и отправляют файлы,
 // например чек об оплате. Писать можно, когда менеджер принял заказ (отправил реквизиты) и после оплаты.
 // Файлы хранятся в базе: фото сжимаются до ~2000 px, PDF — до 3 МБ.
-import { $, escapeHtml, formatDate, haptic, toast, storage, emit } from "./core.js?v=20261001b";
+import { $, escapeHtml, formatDate, orderDate, haptic, toast, storage, emit } from "./core.js?v=20261001b";
 import { state } from "./state.js?v=20261001b";
 import { supabaseApi } from "./supabase.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
@@ -48,13 +48,13 @@ export function onChatEvent(payload = {}, side) {
   if (payload.op !== "message") return false;
   const num = Number(payload.id), fromOther = Boolean(payload.staff) !== (side === "staff");
   if (state.view === "chat" && chat?.num === num) load();
-  else if (fromOther) { haptic("success"); toast(`Новое сообщение по заказу №${num}`); }
+  else if (fromOther) { haptic("success"); toast(side === "staff" ? `Новое сообщение по заказу №${num}` : "Новое сообщение от менеджера"); }
   return true;
 }
 
 function renderShell() {
   const { order, side } = chat;
-  sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Заказ №${order.num}</h2>
+  sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">${side === "staff" ? `Заказ №${order.num}` : `Заказ от ${orderDate(order.date)}`}</h2>
     <p class="adm-sub">${side === "staff" ? "Переписка с покупателем. Сюда он пришлёт чек об оплате."
       : "Переписка с менеджером. После оплаты отправьте сюда чек: фото, скриншот или PDF. Писать можно и прямо в чате с ботом — сообщения появятся здесь."}</p>
     <div class="chat" id="chatList"><p class="adm-sub">Загружаем переписку…</p></div>

@@ -97,11 +97,89 @@ async function sendOrders(chatId: number, userId: number) {
   });
 }
 
-/** Фото того, что заказано: одно — фотографией, несколько — альбомом. Без фото (старые заказы) — ничего. */
+/* ---------- Фото заказанных товаров ----------
+   Ссылку на фото сайт кладёт в заказ (items[].photo). У заказов, оформленных раньше или со старой
+   версии сайта, её нет — тогда ищем фото в каталоге: встроенные товары в js/data.js на сайте,
+   добавленные — в catalog_state. */
+const absolute = (path: string) => { try { return new URL(path, SHOP_URL).href; } catch { return ""; } };
+const PHOTO_EXPR = String.raw`(?:img\("([^"]+)"\)|"([^"]+)")`; // img("2") или "1-pants.jpg"
+const photoPath = (m: RegExpMatchArray, i: number) => (m[i] ? `img/products/${m[i]}.jpg` : m[i + 1]);
+
+let catalogPhotos: { at: number; map: Map<string, string> } | null = null;
+/** "id|#ЦВЕТ" и "id" → полная ссылка на фото. Кэш на 10 минут. */
+async function loadCatalogPhotos() {
+  if (catalogPhotos && Date.now() - catalogPhotos.at < 600_000) return catalogPhotos.map;
+  const map = new Map<string, string>();
+  try {
+    const source = await (await fetch(absolute("js/data.js"))).text();
+    for (const block of source.split(/(?=\{\s*id:\s*\d+,)/).slice(1)) {
+      const id = /^\{\s*id:\s*(\d+)/.exec(block)?.[1];
+      const main = new RegExp(String.raw`\bphoto:\s*` + PHOTO_EXPR).exec(block);
+      if (!id || !main) continue;
+      map.set(id, absolute(photoPath(main, 1)));
+      const colors = /colorPhotos:\s*\{([^}]*)\}/.exec(block)?.[1] ?? "";
+      for (const c of colors.matchAll(new RegExp(String.raw`"(#[0-9A-Fa-f]{6})":\s*` + PHOTO_EXPR, "g")))
+        map.set(`${id}|${c[1].toUpperCase()}`, absolute(photoPath(c, 2)));
+    }
+  } catch (e) { console.error("Фото встроенных товаров (js/data.js):", e); }
+  try {
+    const { data } = await db.from("catalog_state").select("data").eq("id", 1).maybeSingle();
+    for (const p of (data?.data?.products ?? []) as Json[]) {
+      const colors = (Array.isArray(p.colors) ? p.colors : []).filter((c: Json) => c?.hex && c?.image);
+      if (!p.num || !colors.length) continue;
+      map.set(String(p.num), absolute(colors[0].image));
+      for (const c of colors) map.set(`${p.num}|${String(c.hex).toUpperCase()}`, absolute(c.image));
+    }
+  } catch (e) { console.error("Фото добавленных товаров (catalog_state):", e); }
+  catalogPhotos = { at: Date.now(), map };
+  return map;
+}
+
+async function photoUrls(items: Json[]) {
+  const catalog = items.some((l) => !String(l.photo ?? "").startsWith("https://")) ? await loadCatalogPhotos() : null;
+  const urls = items.map((l) => {
+    if (typeof l.photo === "string" && l.photo.startsWith("https://")) return l.photo;
+    return catalog?.get(`${l.id}|${String(l.color ?? "").toUpperCase()}`) ?? catalog?.get(String(l.id)) ?? "";
+  });
+  return [...new Set(urls.filter((u) => u.startsWith("https://")))].slice(0, 10);
+}
+
+/** Скачиваем фото сами и отправляем файлом: так Telegram не нужно самому открывать сайт.
+    Не скачалось — отдаём Telegram ссылку. */
+async function sendPhotoFiles(chatId: number, urls: string[]) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  const media: Json[] = [];
+  for (const [i, url] of urls.entries()) {
+    const response = await fetch(url).catch(() => null);
+    const type = response?.headers.get("content-type") ?? "";
+    if (response?.ok && type.startsWith("image/")) {
+      form.append(`p${i}`, new Blob([await response.arrayBuffer()], { type }), `p${i}.${type.split("/")[1] || "jpg"}`);
+      media.push({ type: "photo", media: `attach://p${i}` });
+    } else {
+      console.error("Фото не скачалось:", url, response?.status);
+      media.push({ type: "photo", media: url });
+    }
+  }
+  let method = "sendMediaGroup";
+  if (media.length === 1) {
+    method = "sendPhoto";
+    const only = media[0].media as string;
+    if (only.startsWith("attach://")) { form.set("photo", form.get(only.slice(9)) as Blob, "photo.jpg"); form.delete(only.slice(9)); }
+    else form.set("photo", only);
+  } else form.append("media", JSON.stringify(media));
+  const response = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, { method: "POST", body: form });
+  const result = await response.json().catch(() => ({}));
+  if (!result?.ok) console.error(`Telegram ${method}:`, result?.error_code, result?.description);
+  return Boolean(result?.ok);
+}
+
+/** Фото того, что заказано: одно — фотографией, несколько — альбомом. Альбом не ушёл — по одной. */
 async function sendPhotos(chatId: number, items: Json[]) {
-  const photos = [...new Set(items.map((l) => l.photo).filter((u) => typeof u === "string" && u.startsWith("https://")))].slice(0, 10);
-  if (photos.length === 1) await tg("sendPhoto", { chat_id: chatId, photo: photos[0] });
-  else if (photos.length > 1) await tg("sendMediaGroup", { chat_id: chatId, media: photos.map((url) => ({ type: "photo", media: url })) });
+  const urls = await photoUrls(items);
+  if (!urls.length) return console.log("У заказа нет фото товаров");
+  if (await sendPhotoFiles(chatId, urls)) return;
+  if (urls.length > 1) for (const url of urls) await sendPhotoFiles(chatId, [url]);
 }
 
 /** Покупатель нажал на заказ: фото, дата, состав, статус. Запоминаем — следующие сообщения уйдут менеджеру по нему. */

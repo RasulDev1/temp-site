@@ -26,6 +26,9 @@ export function closeSheet() {
   syncMainButton();
 }
 
+/** Шаг назад: из вложенной шторки (например, чат заказа) — туда, откуда пришли, иначе закрыть */
+export const goBack = () => (onBack ? onBack() : closeSheet());
+
 export function setTab(tab) {
   const changed = state.tab !== tab;
   state.tab = tab;
@@ -75,13 +78,14 @@ export function syncMainButton() {
 }
 
 export function initNavigation() {
-  $("scrim").onclick = closeSheet;
-  $("closeSheet").onclick = closeSheet;
+  // крестик, тап мимо шторки и Esc ведут на шаг назад: из чата заказа менеджер возвращается к списку заказов
+  $("scrim").onclick = goBack;
+  $("closeSheet").onclick = goBack;
   $("cartBarButton").onclick = openCart;
   $("tabs").onclick = (e) => {
     const tab = e.target.closest("[data-tab]")?.dataset.tab;
     if (tab && tab !== state.tab) { haptic(); setTab(tab); }
   };
-  telegram?.BackButton?.onClick(() => (onBack ? onBack() : closeSheet()));
-  document.addEventListener("keydown", (e) => e.key === "Escape" && state.view && closeSheet());
+  telegram?.BackButton?.onClick(goBack);
+  document.addEventListener("keydown", (e) => e.key === "Escape" && state.view && goBack());
 }

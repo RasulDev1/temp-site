@@ -78,8 +78,16 @@ function orderButton(o: Json) {
   return `${day(o.created_at)} · ${what} · ${STATUS[o.status] ?? ""}`;
 }
 
-/** «Мои заказы»: только активные заказы, кнопкой на каждый — нажал, и сообщения уходят менеджеру по этому заказу */
+/** Чат с менеджером закрыт: сообщения покупателя больше не уходят в чат заказа */
+const closeChat = (userId: number) => db.from("bot_chat_state").delete().eq("telegram_id", userId);
+const CLOSE_BUTTON = { inline_keyboard: [[{ text: "✖️ Закрыть чат", callback_data: "close" }]] };
+const CHAT_CLOSED = "Чат с менеджером закрыт — ваши сообщения больше не уходят менеджеру.\n\n" +
+  "Чтобы написать снова, откройте заказ в «📦 Мои заказы».";
+
+/** «Мои заказы»: только активные заказы, кнопкой на каждый — нажал, и сообщения уходят менеджеру по этому заказу.
+    Открытый до этого чат закрывается: пока покупатель не выберет заказ, сообщения никуда не уходят. */
 async function sendOrders(chatId: number, userId: number) {
+  await closeChat(userId);
   const { data: orders, error } = await db.from("orders").select("id,status,items,created_at")
     .eq("user_id", userId).in("status", ACTIVE).order("id", { ascending: false }).limit(10);
   if (error) {
@@ -201,11 +209,11 @@ async function chooseOrder(chatId: number, userId: number, orderId: number) {
   }
   if (OPEN.includes(o.status)) {
     await db.from("bot_chat_state").upsert({ telegram_id: userId, order_id: o.id, updated_at: new Date().toISOString() });
-    text += "\n\n✍️ Есть вопрос? Просто напишите сюда — менеджер ответит в этом чате.";
+    text += "\n\n✍️ Есть вопрос? Просто напишите сюда — менеджер ответит в этом чате. Закончили — нажмите «Закрыть чат».";
   } else {
     text += "\n\nМенеджер проверяет, всё ли есть в наличии. Как только заказ будет подтверждён, реквизиты для оплаты появятся в «📦 Мои заказы».";
   }
-  return tg("sendMessage", { chat_id: chatId, text: text.slice(0, 4000) });
+  return tg("sendMessage", { chat_id: chatId, text: text.slice(0, 4000), ...(OPEN.includes(o.status) ? { reply_markup: CLOSE_BUTTON } : {}) });
 }
 
 /** Файл из Telegram → base64 для чата заказа. null — файл слишком большой. */
@@ -220,6 +228,7 @@ async function download(fileId: string, type: string, name: string) {
   return { name: name.slice(-150), type, data: encodeBase64(bytes) };
 }
 
+const NO_CHAT = "Чтобы написать менеджеру, откройте заказ: нажмите «📦 Мои заказы» и выберите нужный заказ.";
 const NO_ORDER = "Написать менеджеру можно, когда он подтвердит ваш заказ — обычно это быстро 🙂\n\n" +
   "Статус заказа всегда можно посмотреть в «📦 Мои заказы». Если заказа ещё нет — загляните в каталог:";
 
@@ -264,13 +273,14 @@ async function handle(msg: Json) {
   if (!text && !file) return reply(chatId, "Можно отправить текст, фото или PDF — всё передадим менеджеру.");
 
   // По какому заказу: тот, что выбран в «Мои заказы» (или по которому последним писал менеджер),
-  // для старых сообщений с номером — по номеру, иначе последний подтверждённый
+  // для старых сообщений с номером — по номеру. Чат закрыт и заказ не выбран — менеджеру не отправляем.
   const quoted = msg.reply_to_message?.text ?? msg.reply_to_message?.caption ?? "";
   let orderId = Number(/Заказ №(\d+)/.exec(quoted)?.[1]) || null;
   if (!orderId) {
     const { data: chosen } = await db.from("bot_chat_state").select("order_id").eq("telegram_id", msg.from.id).maybeSingle();
     orderId = chosen?.order_id ?? null;
   }
+  if (!orderId) return tg("sendMessage", { chat_id: chatId, text: NO_CHAT, reply_markup: mainKeyboard });
 
   const { data, error } = await db.rpc("bot_customer_message", {
     p_telegram_id: msg.from.id, p_order_id: orderId, p_body: text || null,
@@ -298,6 +308,12 @@ Deno.serve(async (request) => {
     await tg("answerCallbackQuery", { callback_query_id: callback.id }).catch(() => {});
     const orderId = Number(/^order:(\d+)$/.exec(callback.data ?? "")?.[1]);
     if (orderId) try { await chooseOrder(callback.message.chat.id, callback.from.id, orderId); } catch (e) { console.error(e); }
+    if (callback.data === "close") try {
+      await closeChat(callback.from.id);
+      // кнопку под сообщением убираем, чтобы не нажимали повторно
+      await tg("editMessageReplyMarkup", { chat_id: callback.message.chat.id, message_id: callback.message.message_id, reply_markup: { inline_keyboard: [] } });
+      await reply(callback.message.chat.id, CHAT_CLOSED);
+    } catch (e) { console.error(e); }
     return new Response("ok");
   }
   const msg = update?.message;

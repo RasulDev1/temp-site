@@ -37,6 +37,7 @@ function start(x, y) {
   drag.before = buttonIds().join(",");
   drag.ghost = Object.assign(button.cloneNode(true), { id: "", className: `${button.className} drag-ghost` });
   drag.ghost.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
+  drag.ghost.style.setProperty("--icon", getComputedStyle(button).getPropertyValue("--icon")); // иконка кнопки задана по её id
   document.body.append(drag.ghost);
   button.classList.add("drag-placeholder");
   haptic("medium");

@@ -17,12 +17,22 @@
 
 /* ---------- Режим сотрудника: вместо вкладок покупателя — кнопки сотрудника (js/main.js) ---------- */
 .staff-mode #tabs, .staff-mode #addToCart, .staff-mode .cartbar { display: none !important; }
-.staff-mode .admin-bar:not([hidden]) { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; margin-top: 14px;
+/* Меню сотрудника: группы «Продажи», «Магазин», «Управление» */
+.admin-group { display: flex; flex-direction: column; min-width: 0; }
+.admin-group:not(:has(.admin-btn:not([hidden]))) { display: none; }
+.admin-cap { display: none; }
+.admin-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.staff-mode .admin-bar:not([hidden]) { display: flex; flex-wrap: wrap; gap: 10px 8px; margin-top: 14px; }
+.staff-mode .admin-group { flex: var(--n, 1) 1 0; }
+.staff-mode .admin-group:first-child { flex-basis: 100%; }
+.staff-mode .admin-cap { display: block; margin: 0 0 5px 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.staff-mode .admin-row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; flex: 1;
   border-radius: 14px; background: var(--surface); border: 1.5px solid var(--line); }
-.staff-mode .admin-btn { margin: 0; border: 0; border-radius: 10px; padding: 10px 6px; font-size: 14px; line-height: 1.2;
-  color: var(--ink); background: transparent; font-variant-numeric: tabular-nums; }
+.staff-mode .admin-btn { margin: 0; border: 0; border-radius: 10px; padding: 11px 6px; font-size: 14px; line-height: 1.2; font-weight: 700;
+  background: transparent; color: var(--ink); font-variant-numeric: tabular-nums; }
 .staff-mode .admin-btn:active { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .staff-mode .admin-btn.has-new { background: var(--accent); color: var(--accent-ink); border: 0; }
+@media (min-width: 900px) { html:not(.in-telegram).staff-mode .admin-group:first-child { flex-basis: 0; } }
 
 /* ---------- Вход сотрудника: «Выйти» в плашке с ФИО, ссылка для входа в «Сотрудниках» ---------- */
 .staff-logout { border: 0; background: none; padding: 2px 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); text-decoration: underline; cursor: pointer; }

@@ -1,4 +1,4 @@
-// Роли: директор и менеджеры входят по логину и паролю (ссылка …/staff.html), все остальные — покупатели.
+// Роли: директор и менеджеры входят по логину и паролю (ссылка …/crm.html), все остальные — покупатели.
 import { $, escapeHtml, haptic, on } from "./core.js?v=20261001b";
 import { state } from "./state.js?v=20261001b";
 import { staffLogout } from "./supabase.js?v=20261001b";

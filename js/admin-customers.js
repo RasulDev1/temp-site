@@ -13,7 +13,7 @@ const STATUS = { new: "Новый", awaiting_payment: "Ждёт оплаты", p
 const PAY_METHOD = { cash: "наличными", card: "картой" };
 const ERRORS = {
   no_function: "Клиенты не настроены: в Supabase нужно запустить supabase-customers.sql",
-  forbidden: "Нет прав: войдите как сотрудник по ссылке …/staff.html",
+  forbidden: "Нет прав: войдите как сотрудник по ссылке …/crm.html",
   network: "Нет связи с базой. Проверьте интернет и повторите.",
 };
 const errorText = (error) => ERRORS[error?.code] || "Не удалось загрузить. Повторите через минуту.";

@@ -61,9 +61,10 @@ function buckets(offset = 0) {
 }
 
 const bucketOf = (iso, month) => (iso ? (month ? monthKey(new Date(iso)) : dayKey(new Date(iso))) : null);
-/** Оплаченный заказ: статус «Оплачен» или «Вручён». Если сумма оплаты не записана (заказ оплачен до кнопки «Оплатить»), берём сумму заказа. */
-const isSale = (o) => o.status === "paid" || o.status === "delivered";
-const paidAmount = (o) => (o.payment ? o.payment.amount : Number(o.total) || 0);
+/** Оплаченный заказ: «Оплачен», «Вручён» или с возвратом. Если сумма оплаты не записана (заказ оплачен до кнопки «Оплатить»),
+ *  берём сумму заказа. Возвращённые деньги вычитаются. */
+const isSale = (o) => ["paid", "delivered", "return_requested", "returned"].includes(o.status);
+const paidAmount = (o) => (o.payment ? o.payment.amount : Number(o.total) || 0) - (o.refund?.amount || 0);
 
 /** Показатели по столбикам: заявки (по дате оформления), продажи (по дате оплаты), новые клиенты (по первому заказу) */
 function series(offset = 0) {
@@ -173,12 +174,14 @@ function attentionHtml() {
   const waiting = list.filter((o) => o.status === "accepted" && !o.payment);
   const today = new Date(); today.setHours(23, 59, 59, 999);
   const myTasks = (tasks || []).filter((t) => t.mine && !t.done_at && new Date(t.due) <= today).length;
+  const returns = list.filter((o) => o.status === "return_requested").length;
   const item = (n, label, sub, target) => `<button class="db-alert${n ? " hot" : ""}" data-go="${target}">
     <b>${n}</b><span>${label}</span><small>${sub}</small></button>`;
   return `<div class="db-alerts">
     ${item(fresh, pluralize(fresh, "новая заявка", "новые заявки", "новых заявок"), fresh ? "ждут ответа" : "всё обработано", "adminOrdersButton")}
     ${item(waiting.length, "ждут оплаты", formatPrice(total(waiting.map((o) => o.total))), "adminOrdersButton")}
     ${tasks ? item(myTasks, pluralize(myTasks, "задача", "задачи", "задач"), "на сегодня и просрочено", "adminTasksButton") : ""}
+    ${returns ? item(returns, pluralize(returns, "просьба о возврате", "просьбы о возврате", "просьб о возврате"), "ждут решения", "adminOrdersButton") : ""}
   </div>`;
 }
 

@@ -131,6 +131,7 @@ function openVariantEditor(id) {
     trackStock: Boolean(qty), qty: { ...qty },
     // цена до скидки и цена со скидкой (пусто — скидки нет)
     price: String(product.oldPrice || product.price), sale: product.oldPrice ? String(product.price) : "",
+    cost: state.costs?.[id] ? String(state.costs[id]) : "", // закупочная цена (видят только сотрудники)
   };
   renderVariantEditor();
   sheetBody.onclick = async (e) => {
@@ -156,9 +157,10 @@ function openVariantEditor(id) {
     renderVariantEditor();
   };
   sheetBody.oninput = (e) => {
-    if (e.target.id === "priceBase" || e.target.id === "priceSale") {
-      draft[e.target.id === "priceBase" ? "price" : "sale"] = e.target.value;
+    if (e.target.id === "priceBase" || e.target.id === "priceSale" || e.target.id === "priceCost") {
+      draft[{ priceBase: "price", priceSale: "sale", priceCost: "cost" }[e.target.id]] = e.target.value;
       $("pricePreview").innerHTML = pricePreview();
+      if ($("costPreview")) $("costPreview").innerHTML = costPreview();
       $("priceHint").textContent = "";
       return;
     }
@@ -197,6 +199,19 @@ function pricePreview() {
   return `Покупатель увидит: <b>${formatPrice(sale)}</b> <s>${formatPrice(base)}</s> и отметку «−${discountPercent(sale, base)}%»`;
 }
 
+/** Наценка с закупочной цены: сколько магазин зарабатывает с одной вещи */
+function costPreview() {
+  const cost = Number(String(draft.cost).replace(",", ".")) || 0, price = Math.round(Number(draft.sale)) || Math.round(Number(draft.price)) || 0;
+  if (!cost) return "Укажите, за сколько закупаете вещь: тогда в «Аналитике» будет видна прибыль.";
+  if (!price) return "";
+  const margin = price - cost;
+  return `С одной вещи: <b>${formatPrice(Math.round(margin))}</b> (${margin >= 0 ? "наценка" : "убыток"} ${Math.round(Math.abs(margin) / cost * 100)}%)`;
+}
+
+const costEditorHtml = () => !state.costs ? "" : `<label class="field"><span>Закупочная цена, ₽ <small>видят только сотрудники</small></span>
+      <input id="priceCost" type="number" inputmode="decimal" min="0" step="0.01" value="${escapeHtml(draft.cost)}" placeholder="Не указана"></label>
+    <p class="adm-sub" id="costPreview">${costPreview()}</p>`;
+
 const priceEditorHtml = () => !api.setPrice ? "" : `<p class="label">Цена и скидка</p>
     <div class="two">
       <label class="field"><span>Цена, ₽</span><input id="priceBase" type="number" inputmode="numeric" min="1" value="${escapeHtml(draft.price)}"></label>
@@ -208,6 +223,7 @@ const priceEditorHtml = () => !api.setPrice ? "" : `<p class="label">Цена и
     </div>
     <p class="adm-sub" id="pricePreview" style="margin-top:8px">${pricePreview()}</p>
     <p class="hint" id="priceHint"></p>
+    ${costEditorHtml()}
     <p class="label">Цвета, размеры и остатки</p>`;
 
 /** Цена, которую нужно сохранить: undefined — не менялась, null — вернуть исходную, иначе { price, old } */
@@ -229,7 +245,7 @@ function renderVariantEditor() {
     <h2 class="p-name">${p.name}</h2>
     ${priceEditorHtml()}
     <label class="check-line"><input type="checkbox" id="trackStock" ${trackStock ? "checked" : ""}> Вести учёт количества</label>
-    <p class="adm-sub">${trackStock ? `Впишите, сколько штук каждого сочетания на складе. 0 — нет в наличии. ${hasServer ? "Остатки уменьшаются сами при каждом заказе." : "После продажи уменьшайте остаток здесь вручную."}`
+    <p class="adm-sub">${trackStock ? `Впишите, сколько штук каждого сочетания на складе. 0 — нет в наличии. ${hasServer || state.costs ? "Остатки уменьшаются сами при каждом заказе и возвращаются при отказе или возврате." : "После продажи уменьшайте остаток здесь вручную."}`
       : "Нажмите на клетку, чтобы убрать сочетание. Без учёта количества товар продаётся без ограничений."} Нажмите на цвет или размер, чтобы убрать его целиком.</p>
     <div class="vwrap"><table class="vtab">
       <thead><tr><th></th>${p.sizes.map((s) => `<th><button class="vhead${draft.offSizes.has(s) ? " off" : ""}" data-off-size="${s}">${s}</button></th>`).join("")}</tr></thead>
@@ -258,11 +274,18 @@ async function saveVariants(button) {
     $("priceBase").scrollIntoView({ block: "center" });
     return haptic("medium");
   }
+  const cost = Math.round((Number(String(draft.cost).replace(",", ".")) || 0) * 100) / 100;
+  if (cost < 0 || cost > 10000000) { $("priceHint").textContent = "Проверьте закупочную цену"; return haptic("medium"); }
+  const costChanged = state.costs && cost !== (Number(state.costs[p.id]) || 0);
   const qty = trackStock ? Object.fromEntries(p.colors.flatMap((c) => p.sizes.map((s) => [key(c, s), Number(draft.qty[key(c, s)]) || 0]))) : null;
   button.disabled = true;
   button.textContent = "Сохраняем…";
   const saved = await runAction(async () => {
     if (price.value !== undefined) await api.setPrice(p.id, price.value);
+    if (costChanged) {
+      await api.productCostSet(p.id, cost);
+      if (cost) state.costs[p.id] = cost; else delete state.costs[p.id];
+    }
     await api.setVariants(p.id, { offColors: [...draft.offColors], offSizes: [...draft.offSizes], offCombos });
     await api.setStock(p.id, qty);
   }, "Изменения сохранены");
@@ -373,6 +396,8 @@ export function initAdminProducts(guard = (open) => open()) {
   $("addProductButton").onclick = () => { haptic(); guard(openNewProductForm); };
   $("hiddenProductsButton").onclick = () => { haptic(); guard(openHiddenProducts); };
   state.editProduct = (id) => guard(() => openVariantEditor(id)); // нажатие на карточку в каталоге
+  // закупочные цены (supabase-crm.sql); без настройки поле не показываем
+  if (api.productCosts) api.productCosts().then((costs) => { state.costs = costs || {}; }).catch(() => { state.costs = null; });
   syncCatalogTools();
   on("catalog", () => {
     syncCatalogTools();

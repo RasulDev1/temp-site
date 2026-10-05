@@ -9,7 +9,10 @@ import { openTaskForm, tasksListHtml, handleTaskTap, deleteTask } from "./admin-
 
 const TAGS = ["Постоянный", "VIP", "Опт", "Проблемный"];
 const SORTS = [["recent", "Недавние"], ["spent", "Больше купили"], ["sleeping", "Давно не покупали"]];
-const STATUS = { new: "Новый", awaiting_payment: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", cancelled: "Отменён" };
+const STATUS = { new: "Новый", awaiting_payment: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", cancelled: "Отменён",
+  return_requested: "Просит возврат", returned: "Возврат" };
+const SOURCES = ["Instagram", "ВКонтакте", "Telegram", "Авито", "Посоветовали друзья", "Увидел магазин", "Другое"];
+const SOLD = ["paid", "delivered", "return_requested", "returned"];
 const PAY_METHOD = { cash: "наличными", card: "картой" };
 const ERRORS = {
   no_function: "Клиенты не настроены: в Supabase нужно запустить supabase-customers.sql",
@@ -43,7 +46,7 @@ const tagsHtml = (tags = []) => tags.length ? `<span class="cl-tags">${tags.map(
 const customerRow = (c) => `<button class="an-day an-staff cl-row" data-customer="${Number(c.id)}">
   <span><b>${escapeHtml(c.name || "Без имени")}</b>${tagsHtml(c.tags)}
     <small>${escapeHtml(c.phone || (c.username ? "@" + c.username : ""))}</small>
-    <small>${ordersWord(Number(c.orders))} · последний ${lastSeen(c.last_at)}${c.notes ? ` · 📝${c.notes}` : ""}</small></span>
+    <small>${ordersWord(Number(c.orders))} · последний ${lastSeen(c.last_at)}${c.returns ? ` · возвратов ${c.returns}` : ""}${c.notes ? ` · 📝${c.notes}` : ""}${c.source ? ` · ${escapeHtml(c.source)}` : ""}</small></span>
   <span>${formatPrice(Number(c.spent) || 0)}<small>купил на ›</small></span></button>`;
 
 function renderList() {
@@ -84,7 +87,8 @@ const cardOrderHtml = (o) => `<article class="ord st-${o.status === "awaiting_pa
   ${orderItemsHtml(o)}
   <p class="ord-way">${escapeHtml(o.way || "")}${o.addr ? ": " + escapeHtml(o.addr) : ""}</p>
   <p class="ord-sum">Итого <b>${formatPrice(Number(o.total) || 0)}</b></p>
-  ${o.paid != null ? `<p class="ord-pay">Оплачено ${PAY_METHOD[o.method] || ""} · <b>${formatPrice(Number(o.paid))}</b></p>` : ""}
+  ${o.paid != null ? `<p class="ord-pay">Оплачено ${PAY_METHOD[o.method] || ""} · <b>${formatPrice(Number(o.paid))}</b>${
+    Number(o.refund) > 0 ? ` · вернули ${formatPrice(Number(o.refund))}` : ""}</p>` : ""}
   ${o.manager ? `<p class="adm-sub">Менеджер: ${escapeHtml(o.manager)}</p>` : ""}
   <button class="link" data-open-order="${o.id}">Открыть в «Заказах»</button></article>`;
 
@@ -92,8 +96,9 @@ function renderCard() {
   if (state.view !== "customers" || !open) return;
   const c = findCustomer(open.id) || { id: open.id, name: open.card?.orders?.[0]?.name, phone: open.card?.orders?.[0]?.phone, tags: [] };
   const card = open.card, orders = card?.orders || [];
-  const bought = orders.filter((o) => o.status === "paid" || o.status === "delivered");
-  const spent = bought.reduce((s, o) => s + (Number(o.paid ?? o.total) || 0), 0);
+  const bought = orders.filter((o) => SOLD.includes(o.status));
+  const spent = bought.reduce((s, o) => s + (Number(o.paid ?? o.total) || 0) - (Number(o.refund) || 0), 0);
+  const source = card?.source || "";
   const tags = card?.tags || c.tags || [];
   sheetBody.innerHTML = `<div class="grab"></div>
     <button class="link an-back" data-back>← ${open.back ? "К заказу" : "Все клиенты"}</button>
@@ -107,6 +112,9 @@ function renderCard() {
       <div class="an-total"><span>Купил на</span><b>${formatPrice(spent)}</b><small>${bought.length ? `средний чек ${formatPrice(Math.round(spent / bought.length))}` : "оплаченных заказов нет"}</small></div>
       <div class="an-total"><span>Заказов</span><b>${orders.length}</b><small>${orders.length ? `первый ${orderDate(orders[orders.length - 1].at)}` : ""}</small></div>
     </div>
+    ${"source" in card ? `<h3 class="an-h">Откуда узнал о магазине</h3>
+    <div class="cl-tagbar">${[...new Set([...SOURCES, ...(source ? [source] : [])])].map((t) =>
+      `<button class="cl-tag" data-source="${escapeHtml(t)}" aria-pressed="${t === source}">${escapeHtml(t)}</button>`).join("")}</div>` : ""}
     <h3 class="an-h">Метки</h3>
     <div class="cl-tagbar">${[...new Set([...TAGS, ...tags])].map((t) =>
       `<button class="cl-tag" data-tag="${escapeHtml(t)}" aria-pressed="${tags.includes(t)}">${escapeHtml(t)}</button>`).join("")}</div>
@@ -171,6 +179,21 @@ async function toggleTag(button) {
   }
 }
 
+/** Источник клиента: нажать — выбрать, нажать ещё раз — убрать */
+async function setSource(button) {
+  const value = button.dataset.source, next = open.card.source === value ? "" : value;
+  haptic();
+  try {
+    await api.customerSourceSet(open.id, next);
+    open.card.source = next || null;
+    const c = findCustomer(open.id);
+    if (c) c.source = next || null;
+    renderCard();
+  } catch (error) {
+    toast(errorText(error));
+  }
+}
+
 async function addNote(button) {
   noteDraft = $("clNote").value;
   if (!noteDraft.trim()) { $("clHint").textContent = "Напишите заметку"; return haptic("medium"); }
@@ -210,6 +233,8 @@ function onClick(e) {
   if (t.closest("[data-back]")) { haptic(); return open?.back ? open.back() : closeCard(); }
   const tag = t.closest("[data-tag]");
   if (tag) return toggleTag(tag);
+  const sourceButton = t.closest("[data-source]");
+  if (sourceButton) return setSource(sourceButton);
   if (t.closest("[data-note-add]")) return addNote(t.closest("[data-note-add]"));
   if (t.dataset.noteDel) return deleteNote(t);
   if (t.dataset.openOrder) { haptic(); return openAdminOrders(Number(t.dataset.openOrder)); }

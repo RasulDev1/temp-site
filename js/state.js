@@ -22,6 +22,7 @@ export const state = {
   hiddenProductIds: [], // скрытые встроенные товары
   variants: {},         // id → { offColors, offSizes, offCombos }
   stock: {},            // id → { qty: { "цвет|размер": штук } }
+  costs: null,          // id → закупочная цена (только сотрудникам; null — не настроено в базе)
   catalogLoaded: false,
 
   cart: storage.get("temp_cart", []),

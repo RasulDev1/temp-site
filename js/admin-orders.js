@@ -217,9 +217,9 @@ async function sendDecision(button) {
     }
     haptic("success");
     toast(accept ? "Заказ принят" : "Отказ отправлен");
+    const num = openForm.num;
     openForm = null;
-    await loadAdminOrders();
-    renderOrders();
+    await showOrder(num);
   } catch (error) {
     button.disabled = false;
     button.textContent = accept ? "Отправить реквизиты" : "Отправить отказ";
@@ -296,6 +296,18 @@ async function unarchive(button) {
   renderOrders();
 }
 
+/** После смены статуса заказ переходит в другую вкладку — переходим за ним и показываем его же */
+async function showOrder(num) {
+  await loadAdminOrders();
+  const order = state.adminOrders.find((o) => o.num === num);
+  if (order) staffGroup = staffGroupOf(order);
+  renderOrders();
+  const card = $(`order-${num}`);
+  if (!card) return;
+  card.scrollIntoView({ block: "start", behavior: "smooth" });
+  card.classList.add("flash");
+}
+
 /** Почему не получилось вручить — понятным текстом, чтобы было ясно, что чинить */
 function deliverError(error) {
   if (error.code === "conflict") return "Заказ уже изменён другим сотрудником";
@@ -315,8 +327,7 @@ async function markDelivered(button) {
   } catch (error) {
     toast(deliverError(error));
   }
-  await loadAdminOrders();
-  renderOrders();
+  await showOrder(Number(button.dataset.deliver));
 }
 
 /** Почему не получилось отметить оплату */
@@ -346,8 +357,7 @@ async function markPaid(button) {
     $("formHint").textContent = payError(error);
     return haptic("medium");
   }
-  await loadAdminOrders();
-  renderOrders();
+  await showOrder(Number(button.dataset.paySave));
 }
 
 export function initAdminOrders() {

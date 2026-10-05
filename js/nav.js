@@ -1,5 +1,5 @@
 // Навигация: всплывающая шторка, вкладки «Корзина · Мои заказы · Товары», главная кнопка Telegram.
-import { $, telegram, inTelegram, formatPrice, haptic, replayAnimation } from "./core.js?v=20261001b";
+import { $, telegram, inTelegram, formatPrice, haptic, replayAnimation, emit } from "./core.js?v=20261001b";
 import { state, cartCount, cartTotal } from "./state.js?v=20261001b";
 import { addSelectedToCart } from "./shop.js?v=20261001b";
 import { renderCartPage, openCheckout, placeOrder, renderMyOrders } from "./cart.js?v=20261001b";
@@ -9,22 +9,34 @@ let onBack = null;
 
 /** Открывает шторку. back — куда вести по кнопке «Назад» Telegram (по умолчанию закрыть). */
 export function openSheet(view, back = null) {
+  const changed = state.view !== view;
   state.view = view;
   onBack = back;
   $("scrim").classList.add("open");
   $("sheet").classList.add("open");
+  $("sheet").classList.toggle("has-back", Boolean(back));
+  document.documentElement.classList.add("sheet-open");
   $("sheet").scrollTop = 0;
+  // у сотрудника раздел открывается прямо на странице — новый раздел показываем с начала
+  if (changed && staffPage()) scrollTo({ top: 0 });
   telegram?.BackButton?.show();
   syncMainButton();
+  emit("sheet");
 }
 
 export function closeSheet() {
   state.view = null;
   $("scrim").classList.remove("open");
   $("sheet").classList.remove("open");
+  document.documentElement.classList.remove("sheet-open");
+  if (staffPage()) scrollTo({ top: 0 });
   telegram?.BackButton?.hide();
   syncMainButton();
+  emit("sheet");
 }
+
+/** Режим сотрудника: разделы (заказы, клиенты, задачи…) показываются на странице вместо всплывающего окна */
+const staffPage = () => document.documentElement.classList.contains("staff-mode");
 
 /** Шаг назад: из вложенной шторки (например, чат заказа) — туда, откуда пришли, иначе закрыть */
 export const goBack = () => (onBack ? onBack() : closeSheet());

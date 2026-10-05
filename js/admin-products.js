@@ -4,7 +4,7 @@ import { BASE_PRODUCTS, CATEGORIES } from "./data.js?v=20261001b";
 import { state, api, errorMessage, hasServer, useSupabase } from "./state.js?v=20261001b";
 import { CATEGORY_NAMES, colorName, swatchBackground, refreshCatalog, originalPrice } from "./catalog.js?v=20261001b";
 import { productImage } from "./photos.js?v=20261001b";
-import { sheetBody, openSheet } from "./nav.js?v=20261001b";
+import { sheetBody, openSheet, closeSheet } from "./nav.js?v=20261001b";
 
 /** Кнопка удаления срабатывает со второго нажатия */
 function confirmTwice(button, question) {
@@ -83,6 +83,39 @@ function deleteProduct(id) {
     : runAction(() => api.setHiddenProducts([...state.hiddenProductIds, id]), "Товар удалён из каталога");
 }
 
+/* ---------- Режим сотрудника: «Товары» — это сам каталог; правка по нажатию на карточку, «Добавить» справа от категорий ---------- */
+const staffPage = () => document.documentElement.classList.contains("staff-mode");
+/** Куда вернуться из правки товара: у сотрудника — в каталог, иначе — к списку товаров */
+const backTarget = () => (staffPage() ? null : openAdminProducts);
+const backToProducts = () => (staffPage() ? closeSheet() : openAdminProducts());
+
+/** Удалённые встроенные товары: их можно вернуть в каталог */
+function openHiddenProducts() {
+  const hidden = BASE_PRODUCTS.filter((p) => state.hiddenProductIds.includes(p.id));
+  if (!hidden.length) return state.view === "adminHidden" && closeSheet();
+  sheetBody.innerHTML = `<div class="grab"></div>
+    <button class="adm-back" id="backToProducts">← Товары</button>
+    <h2 class="p-name">Удалённые товары</h2>
+    <p class="adm-sub">Встроенные товары, убранные из каталога. Их можно вернуть.</p>
+    ${hidden.map((p) => productRow(p, `<button class="adm-del" data-restore="${p.id}">Вернуть</button>`)).join("")}`;
+  sheetBody.onclick = async (e) => {
+    const restore = e.target.closest("[data-restore]");
+    if (e.target.id === "backToProducts") closeSheet();
+    if (restore) {
+      restore.disabled = true;
+      const id = Number(restore.dataset.restore);
+      await runAction(() => api.setHiddenProducts(state.hiddenProductIds.filter((x) => x !== id)), "Товар снова в каталоге");
+    }
+  };
+  openSheet("adminHidden");
+}
+
+function syncCatalogTools() {
+  const count = state.hiddenProductIds.filter((id) => BASE_PRODUCTS.some((p) => p.id === id)).length;
+  $("hiddenProductsButton").hidden = !count;
+  $("hiddenProductsButton").textContent = `Удалённые · ${count}`;
+}
+
 /* ---------- Цвета, размеры и остатки: таблица «цвет × размер» ---------- */
 let draft = null;
 const toggle = (set, value) => (set.has(value) ? set.delete(value) : set.add(value));
@@ -90,6 +123,7 @@ const key = (color, size) => `${color}|${size}`;
 
 function openVariantEditor(id) {
   const product = state.catalogProducts.find((p) => p.id === id);
+  if (!product) return;
   const v = state.variants[id] || {}, qty = state.stock[id]?.qty;
   draft = {
     product,
@@ -101,7 +135,7 @@ function openVariantEditor(id) {
   renderVariantEditor();
   sheetBody.onclick = async (e) => {
     const t = e.target, { product: p } = draft;
-    if (t.id === "backToProducts") return openAdminProducts();
+    if (t.id === "backToProducts") return backToProducts();
     if (t.closest("[data-off-color]")) toggle(draft.offColors, t.closest("[data-off-color]").dataset.offColor);
     else if (t.closest("[data-off-size]")) toggle(draft.offSizes, t.closest("[data-off-size]").dataset.offSize);
     else if (t.closest("[data-off-combo]:not(:disabled)")) toggle(draft.offCombos, t.closest("[data-off-combo]").dataset.offCombo);
@@ -115,7 +149,7 @@ function openVariantEditor(id) {
       draft.sale = d ? String(Math.max(1, Math.min(base - 1, Math.round(base * (1 - d / 100) / 10) * 10))) : "";
     } else if (t.id === "saveVariants") return saveVariants(t);
     else if (t.id === "deleteProduct") {
-      if (confirmTwice(t, "Точно удалить весь товар?") && await deleteProduct(p.id)) openAdminProducts();
+      if (confirmTwice(t, "Точно удалить весь товар?") && await deleteProduct(p.id)) backToProducts();
       return;
     } else return;
     haptic();
@@ -135,7 +169,7 @@ function openVariantEditor(id) {
     e.target.classList.toggle("zero", n === 0);
     $("stockTotal").textContent = stockTotal();
   };
-  openSheet("adminVariants", openAdminProducts);
+  openSheet("adminVariants", backTarget());
 }
 
 const activeColors = () => draft.product.colors.filter((c) => !draft.offColors.has(c));
@@ -191,7 +225,7 @@ function priceToSave() {
 function renderVariantEditor() {
   const { product: p, trackStock } = draft, scroll = $("sheet").scrollTop;
   sheetBody.innerHTML = `<div class="grab"></div>
-    <button class="adm-back" id="backToProducts">← Все товары</button>
+    <button class="adm-back" id="backToProducts">← ${staffPage() ? "Товары" : "Все товары"}</button>
     <h2 class="p-name">${p.name}</h2>
     ${priceEditorHtml()}
     <label class="check-line"><input type="checkbox" id="trackStock" ${trackStock ? "checked" : ""}> Вести учёт количества</label>
@@ -232,7 +266,7 @@ async function saveVariants(button) {
     await api.setVariants(p.id, { offColors: [...draft.offColors], offSizes: [...draft.offSizes], offCombos });
     await api.setStock(p.id, qty);
   }, "Изменения сохранены");
-  if (saved) openAdminProducts();
+  if (saved) backToProducts();
   else { button.disabled = false; button.textContent = "Сохранить"; }
 }
 
@@ -242,7 +276,7 @@ let colorRows = [];
 function openNewProductForm() {
   colorRows = [{ hex: "#1B1B1F", name: "Чёрный", photo: "" }];
   sheetBody.innerHTML = `<div class="grab"></div>
-    <button class="adm-back" id="backToProducts">← Все товары</button>
+    <button class="adm-back" id="backToProducts">← ${staffPage() ? "Товары" : "Все товары"}</button>
     <h2 class="p-name">Новый товар</h2>
     <label class="field"><span>Название</span><input id="newName" maxlength="80" placeholder="Например, Футболка Base"></label>
     <div class="two">
@@ -262,7 +296,7 @@ function openNewProductForm() {
   renderColorRows();
   sheetBody.onclick = (e) => {
     const t = e.target;
-    if (t.id === "backToProducts") openAdminProducts();
+    if (t.id === "backToProducts") backToProducts();
     if (t.id === "addColor") { colorRows.push({ hex: "#8A97A5", name: "", photo: "" }); renderColorRows(); }
     if (t.dataset.removeColor) { colorRows.splice(Number(t.dataset.removeColor), 1); renderColorRows(); }
     if (t.id === "publishProduct") publishProduct(t);
@@ -278,7 +312,7 @@ function openNewProductForm() {
     if (!colorRows[e.target.dataset.photoRow].photo) toast(errorMessage({ code: "unsupported_type" }));
     renderColorRows();
   };
-  openSheet("adminNewProduct", openAdminProducts);
+  openSheet("adminNewProduct", backTarget());
 }
 
 function renderColorRows() {
@@ -327,12 +361,22 @@ async function publishProduct(button) {
     sizes: $("newSizes").value.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12),
     colors: colorRows.map((r, i) => ({ hex: hexes[i], name: r.name.trim(), image: r.photo })),
   }), "Товар опубликован");
-  if (published) openAdminProducts();
+  if (published) backToProducts();
   else { button.disabled = false; button.textContent = "Опубликовать товар"; }
 }
 
 /** guard — проверка перед открытием (на GitHub Pages: есть ли на устройстве ключ доступа) */
 export function initAdminProducts(guard = (open) => open()) {
-  $("adminProductsButton").onclick = () => { haptic(); guard(openAdminProducts); };
-  on("catalog", () => state.view === "admin" && openAdminProducts());
+  // у сотрудника «Товары» показывают каталог на странице; список товаров во всплывающем окне — для старого входа администратора
+  $("adminProductsButton").onclick = () => { haptic(); staffPage() ? closeSheet() : guard(openAdminProducts); };
+  $("addProductButton").hidden = false;
+  $("addProductButton").onclick = () => { haptic(); guard(openNewProductForm); };
+  $("hiddenProductsButton").onclick = () => { haptic(); guard(openHiddenProducts); };
+  state.editProduct = (id) => guard(() => openVariantEditor(id)); // нажатие на карточку в каталоге
+  syncCatalogTools();
+  on("catalog", () => {
+    syncCatalogTools();
+    if (state.view === "admin") openAdminProducts();
+    if (state.view === "adminHidden") openHiddenProducts();
+  });
 }

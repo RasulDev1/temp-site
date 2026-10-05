@@ -1,5 +1,5 @@
 // Точка входа: показываем встроенный каталог сразу, остальное догружаем с сервера.
-import { $, telegram, inTelegram, setupTelegram, emit } from "./core.js?v=20261001b";
+import { $, telegram, inTelegram, setupTelegram, emit, on } from "./core.js?v=20261001b";
 import { state, api, hasServer, useSupabase } from "./state.js?v=20261001b";
 import { staffRestore } from "./supabase.js?v=20261001b";
 import { rebuildCatalog, refreshCatalog } from "./catalog.js?v=20261001b";
@@ -34,9 +34,23 @@ if (new URLSearchParams(location.search).get("tab") === "orders" || telegram?.in
 /** Режим сотрудника: вместо вкладок покупателя (корзина, мои заказы, товары) — кнопки сотрудника, без корзины */
 function setStaffMode(on) {
   document.documentElement.classList.toggle("staff-mode", on);
+  // разделы сотрудника открываются на странице, в колонке рядом с меню — переносим «шторку» внутрь страницы
+  const sheet = $("sheet");
+  if (on) $("cartPage").parentElement.append(sheet); else $("toast").before(sheet);
+  sheet.setAttribute("aria-modal", String(!on));
+  syncActiveSection();
   if (on && state.tab !== "shop") setTab("shop");
   syncMainButton();
 }
+
+/** Подсвечиваем в меню сотрудника раздел, который сейчас открыт */
+const SECTION_BUTTONS = { adminOrders: "adminOrdersButton", chat: "adminOrdersButton", customers: "adminCustomersButton",
+  tasks: "adminTasksButton", analytics: "adminAnalyticsButton", staff: "adminStaffButton" };
+function syncActiveSection() {
+  const active = SECTION_BUTTONS[state.view] || "adminProductsButton";
+  document.querySelectorAll("#adminBar .admin-btn").forEach((b) => b.toggleAttribute("aria-current", b.id === active));
+}
+on("sheet", syncActiveSection);
 
 // GitHub Pages: сотрудники входят по ссылке …/staff.html (или ?staff) логином и паролем,
 // все остальные — покупатели. Изменения в товарах сохраняются в репозиторий ключом доступа на устройстве.

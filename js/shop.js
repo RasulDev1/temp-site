@@ -151,7 +151,10 @@ export function initShop() {
   };
   $("grid").onclick = (e) => {
     const id = e.target.closest("[data-open]")?.dataset.open;
-    if (id) openProduct(Number(id));
+    if (!id) return;
+    // сотрудник нажатием открывает правку товара, покупатель — карточку товара
+    if (state.isAdmin && state.editProduct && document.documentElement.classList.contains("staff-mode")) state.editProduct(Number(id));
+    else openProduct(Number(id));
   };
   on("catalog", () => {
     renderCategories();

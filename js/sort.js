@@ -103,7 +103,7 @@ async function saveOrder() {
 function renderHint() {
   if ($("sortHint")) return;
   const hint = Object.assign(document.createElement("p"), { id: "sortHint", className: "sort-hint",
-    textContent: "Порядок карточек: удерживайте карточку и перетащите её на новое место." });
+    textContent: "Нажмите на товар, чтобы изменить его. Чтобы поменять порядок, перетащите карточку (на телефоне — удерживайте её)." });
   $("grid").before(hint);
 }
 

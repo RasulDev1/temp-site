@@ -17,6 +17,7 @@ const errorText = (error) => ERRORS[error?.code] || "Не получилось. 
 let tasks = null, loadError = "";
 let info = null;          // { me, telegram, staff: [{ id, name }] }
 let scope = "mine";       // mine · all (только директор)
+let day = null;           // выбранный день в ленте дат ("ГГГГ-ММ-ДД", "overdue") или null — все задачи
 let form = null;          // открытая форма задачи
 let back = null;          // куда вернуться из формы (карточка клиента)
 const reminded = new Set(); // о каких наступивших задачах уже напомнили на этом устройстве
@@ -28,13 +29,59 @@ const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); retur
 const isDue = (t) => !t.done_at && new Date(t.due) <= new Date();
 const dueToday = (t) => !t.done_at && localDay(new Date(t.due)) <= localDay(new Date());
 
-function groupOf(t) {
-  if (t.done_at) return "done";
-  if (isDue(t)) return "overdue";
-  const day = localDay(new Date(t.due));
-  return day === addDays(0) ? "today" : day === addDays(1) ? "tomorrow" : "later";
+const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+const dayDate = (d) => new Date(`${d}T00:00`);
+/** «Пятница, 9 октября» */
+const dayTitle = (d) => {
+  const text = dayDate(d).toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+  return text[0].toUpperCase() + text.slice(1);
+};
+const taskDay = (t) => localDay(new Date(t.due));
+
+// Активные задачи — по дням: просрочено, сегодня, завтра, затем отдельно каждая дата; выполненные — в конце
+function groupedTasks(list) {
+  const open = list.filter((t) => !t.done_at).sort((a, b) => new Date(a.due) - new Date(b.due));
+  const groups = [], byDay = new Map();
+  const overdue = open.filter(isDue);
+  if (overdue.length) groups.push(["Просрочено", overdue]);
+  for (const t of open.filter((x) => !isDue(x))) {
+    const d = taskDay(t);
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(t);
+  }
+  for (const [d, items] of byDay) {
+    const title = d === addDays(0) ? "Сегодня" : d === addDays(1) ? "Завтра" : dayTitle(d);
+    groups.push([title, items]);
+  }
+  const done = list.filter((t) => t.done_at).sort((a, b) => new Date(b.done_at) - new Date(a.done_at));
+  if (done.length) groups.push(["Выполнено", done]);
+  return groups;
 }
-const GROUPS = [["overdue", "Просрочено"], ["today", "Сегодня"], ["tomorrow", "Завтра"], ["later", "Позже"], ["done", "Выполнено"]];
+
+/** Задачи выбранного дня: сначала активные, потом выполненные */
+function dayTasks(list) {
+  if (day === "overdue") return list.filter(isDue).sort((a, b) => new Date(a.due) - new Date(b.due));
+  return list.filter((t) => taskDay(t) === day)
+    .sort((a, b) => Boolean(a.done_at) - Boolean(b.done_at) || new Date(a.due) - new Date(b.due));
+}
+
+/** Лента дат на две недели вперёд: число активных задач на каждый день */
+function daysHtml(list) {
+  const open = list.filter((t) => !t.done_at);
+  const count = (d) => open.filter((t) => !isDue(t) && taskDay(t) === d).length;
+  const overdue = open.filter(isDue).length;
+  const days = Array.from({ length: 14 }, (_, i) => addDays(i));
+  const extra = day && day !== "overdue" && !days.includes(day) ? [day] : []; // день, выбранный в календаре
+  const cell = (id, top, main, n, cls = "") => `<button class="tk-day${cls}" data-day="${id}" aria-pressed="${day === id}">
+    <small>${top}</small><b>${main}</b><i>${n ? n : ""}</i></button>`;
+  return `<div class="tk-days" role="tablist">
+    ${cell("", "все", "☰", open.length)}
+    ${overdue ? cell("overdue", "срок", "!", overdue, " late") : ""}
+    ${[...days, ...extra].map((d, i) => cell(d, i === 0 ? "сегодня" : WEEKDAY[dayDate(d).getDay()], dayDate(d).getDate(), count(d),
+      dayDate(d).getDay() % 6 === 0 ? " wknd" : "")).join("")}
+    <label class="tk-day tk-pick" title="Выбрать дату"><small>дата</small><b>📅</b><i></i><input type="date" id="tkDayPick" value="${day && day !== "overdue" ? day : ""}"></label>
+  </div>`;
+}
 
 /* ---------- Кнопка «Задачи» и напоминания на сайте ---------- */
 const myOpen = () => (tasks || []).filter((t) => t.mine && !t.done_at);
@@ -139,15 +186,26 @@ function render() {
   if (state.view !== "tasks") return;
   if (form) { sheetBody.innerHTML = formHtml(); return; }
   const list = tasks || [];
-  const groups = GROUPS.map(([id, title]) => [title, list.filter((t) => groupOf(t) === id)]).filter(([, items]) => items.length);
+  let body;
+  if (loadError) body = `<p class="hint">${loadError}</p>`;
+  else if (!tasks) body = `<p class="adm-sub">Загружаем…</p>`;
+  else if (day) {
+    const items = dayTasks(list);
+    const title = day === "overdue" ? "Просрочено" : day === addDays(0) ? `Сегодня, ${dayTitle(day).split(", ")[1]}` : dayTitle(day);
+    body = `<h3 class="an-h">${title}${items.length ? ` · ${items.length}` : ""}</h3>
+      ${items.length ? tasksListHtml(items) : `<p class="adm-sub">На этот день задач нет.</p>`}`;
+  } else {
+    const groups = groupedTasks(list);
+    body = groups.length ? groups.map(([title, items]) => `<h3 class="an-h">${title} · ${items.length}</h3>${tasksListHtml(items)}`).join("")
+      : `<p class="adm-sub" style="margin-top:12px">Задач нет.</p>`;
+  }
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Задачи</h2>
     <p class="adm-sub">Звонки, обещания клиентам и другие дела с напоминанием в срок. Нажмите на задачу, чтобы подтвердить выполнение.</p>
     ${isDirector() ? `<div class="order-groups" role="tablist">${[["mine", "Мои"], ["all", "Все сотрудники"]].map(([id, title]) =>
       `<button class="chip" role="tab" data-scope="${id}" aria-pressed="${id === scope}">${title}</button>`).join("")}</div>` : ""}
-    <button class="primary" data-task-new>Новая задача</button>
-    ${loadError ? `<p class="hint">${loadError}</p>` : !tasks ? `<p class="adm-sub">Загружаем…</p>`
-      : groups.length ? groups.map(([title, items]) => `<h3 class="an-h">${title} · ${items.length}</h3>${tasksListHtml(items)}`).join("")
-      : `<p class="adm-sub" style="margin-top:12px">Задач нет.</p>`}
+    <button class="primary" data-task-new>Новая задача${day && day !== "overdue" && day !== addDays(0) ? ` на ${dayDate(day).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}` : ""}</button>
+    ${tasks && !loadError ? daysHtml(list) : ""}
+    ${body}
     ${telegramHtml()}`;
 }
 
@@ -248,7 +306,9 @@ async function linkTelegram(on, button) {
 
 function onClick(e) {
   const t = e.target;
-  if (t.closest("[data-task-new]")) { haptic(); return openTaskForm(); }
+  if (t.closest("[data-task-new]")) { haptic(); return openTaskForm(day && day !== "overdue" && day >= addDays(0) ? { date: day } : {}); }
+  const dayButton = t.closest("[data-day]");
+  if (dayButton) { haptic(); day = dayButton.dataset.day || null; return render(); }
   if (t.closest("[data-task-cancel]")) { haptic(); return closeForm(); }
   if (t.closest("[data-task-save]")) return saveTask(t.closest("[data-task-save]"));
   const quick = t.closest("[data-quick-day]");
@@ -263,10 +323,18 @@ function onClick(e) {
   if (t.closest("[data-tg-off]")) return linkTelegram(false, t);
 }
 
+function onChange(e) {
+  if (e.target.id !== "tkDayPick" || !e.target.value) return;
+  haptic();
+  day = e.target.value;
+  render();
+}
+
 export function openTasks() {
   form = null;
   back = null;
   sheetBody.onclick = onClick;
+  sheetBody.onchange = onChange;
   openSheet("tasks");
   render();
   load();

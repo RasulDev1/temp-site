@@ -312,7 +312,7 @@ async function showOrder(num) {
 function deliverError(error) {
   if (error.code === "conflict") return "Заказ уже изменён другим сотрудником";
   if (error.raw?.code === "23514") return "В базе нет статуса «Вручён»: запустите supabase-delivered.sql в Supabase";
-  if (error.code === "not_staff") return "Нет прав: войдите как сотрудник по ссылке …/staff.html";
+  if (error.code === "not_staff") return "Нет прав: войдите как сотрудник по ссылке …/crm.html";
   return errorMessage(error);
 }
 
@@ -334,7 +334,7 @@ async function markDelivered(button) {
 function payError(error) {
   if (error.code === "conflict") return "Заказ уже изменён другим сотрудником";
   if (error.code === "no_payments") return "Оплаты не настроены: запустите supabase-payments.sql в Supabase";
-  if (error.code === "forbidden") return "Нет прав: войдите как сотрудник по ссылке …/staff.html";
+  if (error.code === "forbidden") return "Нет прав: войдите как сотрудник по ссылке …/crm.html";
   return errorMessage(error);
 }
 

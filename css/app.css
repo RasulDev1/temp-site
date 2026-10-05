@@ -275,3 +275,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @media (min-width: 1200px) {
   html:not(.in-telegram) .sheet { width: 820px; }
 }
+
+/* Ссылка в CRM: видна только на устройстве, где уже входил сотрудник */
+.staff-entry { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--muted); text-decoration: none; }
+.staff-entry:hover { color: var(--ink); text-decoration: underline; }
+.staff-entry[hidden] { display: none; }

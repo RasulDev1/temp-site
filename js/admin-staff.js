@@ -1,4 +1,4 @@
-// «Сотрудники» (только директор): ФИО, логин и пароль. Сотрудник входит по ссылке …/staff.html.
+// «Сотрудники» (только директор): ФИО, логин и пароль. Сотрудник входит по ссылке …/crm.html.
 // Пароли хранятся в базе только в виде хеша — посмотреть их нельзя, можно задать новый.
 import { $, escapeHtml, haptic, toast, copyToClipboard } from "./core.js?v=20261001b";
 import { state, api } from "./state.js?v=20261001b";
@@ -21,7 +21,7 @@ const STAFF_ERRORS = {
 const staffError = (error) => STAFF_ERRORS[error?.code] || "Не удалось сохранить. Повторите через минуту.";
 
 /** Ссылка для входа сотрудников — рядом с сайтом магазина */
-const staffLink = () => new URL("staff.html", location.href.split(/[?#]/)[0]).href;
+const staffLink = () => new URL("crm.html", location.href.split(/[?#]/)[0]).href;
 
 function accountForm(a = {}) {
   const isNew = !a.id;

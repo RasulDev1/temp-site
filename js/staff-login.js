@@ -1,4 +1,4 @@
-// Вход для сотрудников по ссылке …/staff.html (или …/?staff): логин и пароль выдаёт директор в «Сотрудниках».
+// Вход для сотрудников по ссылке …/crm.html (старая …/staff.html перенаправляет туда): логин и пароль выдаёт директор в «Сотрудниках».
 import { $, haptic, toast, emit } from "./core.js?v=20261001b";
 import { state, useSupabase } from "./state.js?v=20261001b";
 import { staffLogin } from "./supabase.js?v=20261001b";

@@ -3,6 +3,7 @@
 import { $, formatPrice, escapeHtml, pluralize, haptic, toast } from "./core.js?v=20261001b";
 import { state, api } from "./state.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
+import { loadAdminOrders } from "./admin-orders.js?v=20261001b";
 
 const PERIODS = [["week", "7 дней"], ["month", "30 дней"], ["half", "6 месяцев"]];
 const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -19,6 +20,7 @@ async function load() {
     const [all, myTasks] = await Promise.all([
       api.dashboardOrders ? api.dashboardOrders() : listOrders(),
       api.tasksList ? api.tasksList(false, null).catch(() => null) : null,
+      loadAdminOrders(), // список «Заказы» — для блока «требует внимания»
     ]);
     orders = all;
     tasks = myTasks;
@@ -163,9 +165,12 @@ function greeting() {
   return `${hello}${first ? `, ${escapeHtml(first)}` : ""}`;
 }
 
+/** «Требует внимания» считается по тому же списку, что в «Заказах»: скрытые (убранные из списка) заказы
+ *  и заказы с отмеченной оплатой сюда не попадают. */
 function attentionHtml() {
-  const fresh = orders.filter((o) => o.status === "new").length;
-  const waiting = orders.filter((o) => o.status === "accepted");
+  const list = state.adminOrders || [];
+  const fresh = list.filter((o) => o.status === "new").length;
+  const waiting = list.filter((o) => o.status === "accepted" && !o.payment);
   const today = new Date(); today.setHours(23, 59, 59, 999);
   const myTasks = (tasks || []).filter((t) => t.mine && !t.done_at && new Date(t.due) <= today).length;
   const item = (n, label, sub, target) => `<button class="db-alert${n ? " hot" : ""}" data-go="${target}">

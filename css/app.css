@@ -246,3 +246,30 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } .check path { stroke-dashoffset: 0; } }
+
+/* ---------- Браузер на компьютере: полноценный сайт, а не узкое окно Telegram ---------- */
+@media (min-width: 900px) {
+  html:not(.in-telegram) .wrap { max-width: 1200px; padding: 0 32px 120px; }
+  html:not(.in-telegram) .hero { padding-top: 32px; }
+  html:not(.in-telegram) .tag { font-size: 16px; }
+  html:not(.in-telegram) .tabs { max-width: 560px; }
+  html:not(.in-telegram) .grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px 20px; }
+  html:not(.in-telegram) .card .name { font-size: 15px; }
+  html:not(.in-telegram) .cartbar { left: auto; right: 32px; bottom: 24px; padding: 0; background: none; }
+  html:not(.in-telegram) .cartbar button { width: 360px; box-shadow: 0 10px 30px rgba(5,15,25,.25); }
+  /* шторка становится окном по центру */
+  html:not(.in-telegram) .sheet { left: 50%; right: auto; bottom: auto; top: 5vh; width: min(760px, calc(100vw - 64px)); max-height: 90vh;
+    border-radius: 22px; transform: translate(-50%, 105vh); padding-bottom: 32px; box-shadow: 0 30px 80px rgba(5,15,25,.35); }
+  html:not(.in-telegram) .sheet.open { transform: translate(-50%, 0); }
+  html:not(.in-telegram) .sheet-inner { max-width: none; padding: 24px 32px 0; }
+  html:not(.in-telegram) .grab { display: none; }
+  html:not(.in-telegram) .close { top: 18px; right: 20px; }
+  /* карточка товара: фото слева, описание и выбор справа */
+  html:not(.in-telegram) .sheet-inner:has(> .p-pic) { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); column-gap: 28px; align-content: start; }
+  html:not(.in-telegram) .sheet-inner:has(> .p-pic) > * { grid-column: 2; }
+  html:not(.in-telegram) .sheet-inner > .p-pic { grid-column: 1; grid-row: 1 / span 30; aspect-ratio: 4 / 5; margin: 0; align-self: start; }
+  html:not(.in-telegram) .sheet-inner:has(> .p-pic) .p-name { margin-top: 8px; padding-right: 40px; }
+}
+@media (min-width: 1200px) {
+  html:not(.in-telegram) .sheet { width: 820px; }
+}

@@ -16,12 +16,11 @@ async function load() {
   if (loading) return;
   loading = true;
   try {
-    const [active, archived, myTasks] = await Promise.all([
-      api.adminOrders(false), api.adminOrders(true).catch(() => ({ orders: [] })),
+    const [all, myTasks] = await Promise.all([
+      api.dashboardOrders ? api.dashboardOrders() : listOrders(),
       api.tasksList ? api.tasksList(false, null).catch(() => null) : null,
     ]);
-    const byNum = new Map([...(active.orders || []), ...(archived.orders || [])].map((o) => [o.num, o]));
-    orders = [...byNum.values()];
+    orders = all;
     tasks = myTasks;
     loadError = "";
   } catch (error) {
@@ -29,6 +28,12 @@ async function load() {
   }
   loading = false;
   if (state.view === "dashboard") render();
+}
+
+/** Без прямого доступа к таблице — видимые и скрытые заказы из списка «Заказы» */
+async function listOrders() {
+  const [active, archived] = await Promise.all([api.adminOrders(false), api.adminOrders(true).catch(() => ({ orders: [] }))]);
+  return [...new Map([...(active.orders || []), ...(archived.orders || [])].map((o) => [o.num, o])).values()];
 }
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -54,13 +59,15 @@ function buckets(offset = 0) {
 }
 
 const bucketOf = (iso, month) => (iso ? (month ? monthKey(new Date(iso)) : dayKey(new Date(iso))) : null);
-const isSale = (o) => o.payment && (o.status === "paid" || o.status === "delivered");
+/** Оплаченный заказ: статус «Оплачен» или «Вручён». Если сумма оплаты не записана (заказ оплачен до кнопки «Оплатить»), берём сумму заказа. */
+const isSale = (o) => o.status === "paid" || o.status === "delivered";
+const paidAmount = (o) => (o.payment ? o.payment.amount : Number(o.total) || 0);
 
 /** Показатели по столбикам: заявки (по дате оформления), продажи (по дате оплаты), новые клиенты (по первому заказу) */
 function series(offset = 0) {
   const list = buckets(offset), month = list[0].month, index = new Map(list.map((b, i) => [b.key, i]));
   const zero = () => list.map(() => 0);
-  const s = { buckets: list, orders: zero(), sales: zero(), cash: zero(), card: zero(), newClients: zero(), buyers: list.map(() => new Set()), clients: new Set() };
+  const s = { buckets: list, orders: zero(), sales: zero(), cash: zero(), card: zero(), unknown: zero(), newClients: zero(), buyers: list.map(() => new Set()), clients: new Set() };
   const firstOrder = new Map();
   for (const o of orders) {
     const id = o.user?.id;
@@ -68,8 +75,11 @@ function series(offset = 0) {
     const i = index.get(bucketOf(o.date, month));
     if (i != null && o.status !== "rejected") { s.orders[i]++; if (id != null) { s.clients.add(id); s.buyers[i].add(id); } }
     if (isSale(o)) {
-      const j = index.get(bucketOf(o.payment.at || o.date, month));
-      if (j != null) { s.sales[j] += o.payment.amount; s[o.payment.method === "cash" ? "cash" : "card"][j] += o.payment.amount; }
+      const j = index.get(bucketOf(o.payment?.at || o.date, month)), amount = paidAmount(o);
+      if (j != null) {
+        s.sales[j] += amount;
+        if (o.payment?.method === "cash") s.cash[j] += amount; else if (o.payment?.method === "card") s.card[j] += amount; else s.unknown[j] += amount;
+      }
     }
   }
   for (const date of firstOrder.values()) { const i = index.get(bucketOf(date, month)); if (i != null) s.newClients[i]++; }
@@ -184,7 +194,7 @@ function render() {
   const now = series(0), before = series(1), list = now.buckets;
   const sales = total(now.sales), salesBefore = total(before.sales);
   const count = total(now.orders), countBefore = total(before.orders);
-  const cash = total(now.cash), card = total(now.card);
+  const cash = total(now.cash), card = total(now.card), unknown = total(now.unknown);
   const newClients = total(now.newClients);
   const periodWord = { week: "за 7 дней", month: "за 30 дней", half: "за 6 месяцев" }[period];
 
@@ -213,8 +223,9 @@ function render() {
       </section>
       <section class="db-card db-pay">
         <div class="db-card-h"><div><span class="db-label">Способы оплаты</span><b>${formatPrice(sales)}</b></div></div>
-        <div class="db-donut-wrap">${donut(cash, card)}<span>${sales ? `${Math.round((card / sales) * 100)}%<small>картой</small>` : "<small>нет оплат</small>"}</span></div>
+        <div class="db-donut-wrap">${donut(cash, card)}<span>${cash + card ? `${Math.round((card / (cash + card)) * 100)}%<small>картой</small>` : "<small>нет данных</small>"}</span></div>
         <div class="db-pay-split"><div><b>${formatPrice(cash)}</b><small class="cash">Наличными</small></div><div><b>${formatPrice(card)}</b><small class="card">Картой</small></div></div>
+        ${unknown ? `<p class="adm-sub db-unknown">Ещё ${formatPrice(unknown)} — способ оплаты не указан (заказы оплачены до кнопки «Оплатить»)</p>` : ""}
       </section>
     </div>`;
 }

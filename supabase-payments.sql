@@ -123,6 +123,22 @@ end $$;
 revoke execute on function public.order_mark_paid(bigint, text, numeric), public.payments_stats(date, date), public.analytics_orders(date, date) from public;
 grant execute on function public.order_mark_paid(bigint, text, numeric), public.payments_stats(date, date), public.analytics_orders(date, date) to anon, authenticated;
 
+-- ---------- 5. Список заказов у персонала видит новые столбцы оплаты ----------
+-- Представления из supabase-archive.sql запомнили столбцы заказов на момент создания — пересоздаём их.
+do $$ begin
+  if to_regclass('public.order_archive') is not null then
+    drop view if exists public.orders_active, public.orders_archived;
+    create view public.orders_active with (security_invoker = true) as
+      select o.* from public.orders o
+      where not exists (select 1 from public.order_archive a where a.order_id = o.id);
+    create view public.orders_archived with (security_invoker = true) as
+      select o.*, a.archived_at from public.orders o
+      join public.order_archive a on a.order_id = o.id;
+    revoke all on public.orders_active, public.orders_archived from anon, authenticated;
+    grant select on public.orders_active, public.orders_archived to anon, authenticated;
+  end if;
+end $$;
+
 notify pgrst, 'reload schema';
 
 -- ---------- Проверка: должно быть «true» ----------

@@ -18,7 +18,8 @@ export const isDirector = () => state.role.role === "director";
 function renderStaffBadge() {
   const { position, name } = state.role;
   $("staffBadge").hidden = !isStaff();
-  $("shopAddress").hidden = isStaff();
+  const address = $("shopAddress"); // есть только в магазине; в панели (crm.html) адреса нет
+  if (address) address.hidden = isStaff();
   if (!isStaff()) return;
   $("staffBadge").innerHTML = `<span class="role">${escapeHtml(position)}</span><span class="person">${escapeHtml(name)}</span>
     <button class="staff-logout" id="staffLogout">Выйти</button>`;

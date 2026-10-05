@@ -6,6 +6,7 @@ import { refreshCatalog } from "./catalog.js?v=20261001b";
 import { orderItemsHtml, paymentDetails } from "./cart.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 import { chatButtonHtml, openChat, onChatEvent, hasUnread } from "./chat.js?v=20261001b";
+import { openCustomer } from "./admin-customers.js?v=20261001b";
 
 const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", rejected: "Отказ" };
 /** Вкладки списка заказов. «Новые» видны, только когда есть заказы, которые нужно принять или отклонить. */
@@ -107,7 +108,7 @@ function decisionResultHtml(o) {
 
 const orderHtml = (o) => `<article class="ord st-${o.status}" id="order-${o.num}">
   <div class="ord-top"><b>№${o.num}</b><span class="ord-st">${STATUS[o.status]}</span><time>${formatDate(o.date)}</time></div>
-  <p class="ord-who">${escapeHtml(o.name)}</p>
+  <p class="ord-who">${useSupabase && o.user?.id ? `<button class="link ord-client" data-client="${Number(o.user.id)}" data-client-order="${o.num}">${escapeHtml(o.name)} ›</button>` : escapeHtml(o.name)}</p>
   ${contactsHtml(o)}
   <p class="ord-way">${escapeHtml(o.way)}${o.addr ? ": " + escapeHtml(o.addr) : ""}</p>
   ${orderItemsHtml(o)}
@@ -175,6 +176,7 @@ async function onOrdersClick(e) {
   const chatButton = t.closest("[data-chat]");
   const chatOrder = chatButton && [...state.adminOrders, ...archived].find((o) => o.num === Number(chatButton.dataset.chat));
   if (chatOrder) { haptic(); return openChat(chatOrder, "staff", () => openAdminOrders(chatOrder.num)); }
+  if (t.dataset.client) { haptic(); const num = Number(t.dataset.clientOrder); return openCustomer(t.dataset.client, () => openAdminOrders(num)); }
   if (t.hasAttribute("data-clear")) return clearList(t);
   if (t.hasAttribute("data-show-archived")) return switchList(true);
   if (t.hasAttribute("data-show-active")) return switchList(false);

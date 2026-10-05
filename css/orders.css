@@ -66,3 +66,17 @@
 .an-staff { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .an-back { margin-top: 12px; }
 .an-order span:first-child { align-items: flex-start; font-weight: 400; }
+
+/* Клиенты */
+.ord-client { padding: 0; color: var(--ink); font-size: inherit; font-weight: 600; text-decoration: none; text-align: left; }
+.cl-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 1px; }
+.cl-tags i, .cl-tag { font-style: normal; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--line); color: var(--ink); }
+.cl-tagbar { display: flex; flex-wrap: wrap; gap: 6px; }
+.cl-tag { border: 1.5px solid var(--line); background: var(--bg); font-size: 13px; padding: 6px 12px; }
+.cl-tag[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink, #0E2A47); }
+.cl-btn { flex: 1; color: var(--ink); font-weight: 600; margin-top: 0; display: inline-flex; justify-content: center; align-items: center; text-decoration: none; font-size: 14px; padding: 10px; }
+.cl-note { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.cl-note p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.cl-note small { color: var(--muted); font-size: 12px; }
+.cl-note .link { font-size: 12px; padding: 0; }
+.cl-row .cl-tags + small { margin-top: 2px; }

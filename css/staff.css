@@ -6,37 +6,39 @@
 /* ---------- Палитра: нейтральные серые, один акцент (индиго), шрифт без «Unbounded» ---------- */
 :root.staff-mode {
   --bg: #F7F8FA; --surface: #FFFFFF; --ink: #0F172A; --muted: #64748B; --line: #E5E7EB;
-  --accent: #4F46E5; --accent-ink: #FFFFFF; --lane: #0F172A; --ok: #059669; --danger: #DC2626;
-  --soft: #EEF2FF; --hover: #F3F4F6; --ring: rgba(79, 70, 229, .22);
+  --accent: #F2C400; --accent-ink: #0E2A47; --accent-text: #8A6D00; --lane: #0F172A; --ok: #059669; --danger: #DC2626;
+  --soft: #FEF6D3; --hover: #F3F4F6; --ring: rgba(242, 196, 0, .35);
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, .05);
   --shadow-sm: 0 1px 3px rgba(15, 23, 42, .06), 0 1px 2px rgba(15, 23, 42, .04);
   --shadow-lg: 0 20px 48px rgba(15, 23, 42, .18);
-  --db-warm: #F28C6B; --db-violet-2: #A5A0F7;
+  --db-warm: #0E2A47; --db-violet-2: #FBE38A; /* фирменные цвета магазина: жёлтый и тёмно-синий */
   --display: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root.staff-mode:not([data-theme="light"]) {
     --bg: #0B0F17; --surface: #121826; --ink: #E5E7EB; --muted: #94A3B8; --line: #232B3B;
-    --accent: #6366F1; --accent-ink: #FFFFFF; --lane: #E5E7EB; --soft: rgba(99, 102, 241, .16); --hover: #1A2232; --ring: rgba(99, 102, 241, .35);
+    --accent: #F2C400; --accent-ink: #0A1522; --accent-text: #F2C400; --lane: #E5E7EB; --soft: rgba(242, 196, 0, .14); --hover: #1A2232; --ring: rgba(242, 196, 0, .35);
+    --db-warm: #8FA2B6; --db-violet-2: #7A6400;
     --shadow-xs: none; --shadow-sm: none; --shadow-lg: 0 20px 48px rgba(0, 0, 0, .5);
   }
 }
 :root.staff-mode[data-theme="dark"] {
   --bg: #0B0F17; --surface: #121826; --ink: #E5E7EB; --muted: #94A3B8; --line: #232B3B;
-  --accent: #6366F1; --accent-ink: #FFFFFF; --lane: #E5E7EB; --soft: rgba(99, 102, 241, .16); --hover: #1A2232; --ring: rgba(99, 102, 241, .35);
+  --accent: #F2C400; --accent-ink: #0A1522; --accent-text: #F2C400; --lane: #E5E7EB; --soft: rgba(242, 196, 0, .14); --hover: #1A2232; --ring: rgba(242, 196, 0, .35);
+    --db-warm: #8FA2B6; --db-violet-2: #7A6400;
   --shadow-xs: none; --shadow-sm: none; --shadow-lg: 0 20px 48px rgba(0, 0, 0, .5);
 }
 .staff-mode body { font-size: 14px; letter-spacing: -.003em; }
-.staff-mode :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.staff-mode :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
 /* ---------- Шапка: компактная строка «логотип — должность и ФИО» ---------- */
 .staff-mode .hero { padding: 16px 0 4px; }
 .staff-mode .hero-top { align-items: center; }
 .staff-mode .brand { font: 900 26px/1 "Unbounded", "Arial Black", sans-serif; letter-spacing: -.02em; }
-.staff-mode .brand .men { background: var(--soft); color: var(--accent); top: .1em; }
+.staff-mode .brand .men { background: var(--soft); color: var(--accent-text); top: .1em; }
 .staff-mode .lanes, .staff-mode #greeting { display: none; }
 .staff-mode .staff-badge { flex-direction: row; align-items: center; gap: 8px; padding: 0; }
-.staff-mode .staff-badge .role { order: 2; background: var(--soft); color: var(--accent); font-weight: 600; font-size: 11.5px; border-radius: 999px; padding: 3px 9px; }
+.staff-mode .staff-badge .role { order: 2; background: var(--soft); color: var(--accent-text); font-weight: 600; font-size: 11.5px; border-radius: 999px; padding: 3px 9px; }
 .staff-mode .staff-badge .person { font-weight: 600; font-size: 13px; }
 .staff-mode .staff-logout { font-weight: 500; text-decoration: none; }
 .staff-mode .staff-logout:hover { color: var(--ink); }
@@ -50,7 +52,7 @@
 .staff-mode .admin-btn:active { background: var(--hover); }
 .staff-mode .admin-btn::before { content: ""; flex: none; width: 20px; height: 20px; background: currentColor; opacity: .75;
   -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
-.staff-mode .admin-btn.has-new { background: var(--soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.staff-mode .admin-btn.has-new { background: var(--soft); color: var(--accent-text); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .staff-mode .admin-btn.has-new::before { opacity: 1; }
 .staff-mode .admin-btn.drag-ghost { box-shadow: var(--shadow-lg); border-radius: 10px; }
 #adminHomeButton { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='9' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1.5'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1.5'/%3E%3Crect x='3' y='16' width='7' height='5' rx='1.5'/%3E%3C/svg%3E"); }
@@ -77,7 +79,7 @@
 /* ---------- «Товары»: каталог, справа от категорий — «Добавить» ---------- */
 .staff-mode .cat-tools { display: flex; flex: none; gap: 8px; align-items: center; }
 .staff-mode .cat-tools .primary, .staff-mode .cat-tools .ghost { width: auto; margin: 0; padding: 8px 14px; font-size: 13.5px; white-space: nowrap; }
-.staff-mode .admin-btn[aria-current] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--accent); }
+.staff-mode .admin-btn[aria-current] { border-color: var(--accent-text); box-shadow: 0 0 0 1px var(--accent); color: var(--accent-text); }
 .staff-mode .admin-btn[aria-current]::before { opacity: 1; }
 
 /* ---------- Разделы сотрудника открываются на странице, а не во всплывающем окне ---------- */
@@ -125,13 +127,13 @@
 .staff-mode .field input, .staff-mode .field select, .staff-mode .field textarea, .staff-mode .crow input[type=text], .staff-mode .vqty {
   border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 10px 12px; box-shadow: var(--shadow-xs); transition: border-color .15s, box-shadow .15s; }
 .staff-mode .field input:focus, .staff-mode .field select:focus, .staff-mode .field textarea:focus, .staff-mode .crow input[type=text]:focus, .staff-mode .vqty:focus {
-  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+  outline: none; border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--ring); }
 .staff-mode .way { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .staff-mode .way b { font-weight: 600; }
-.staff-mode .way[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); background: var(--surface); }
-.staff-mode .way[aria-checked="true"] b::before { color: var(--accent); }
+.staff-mode .way[aria-checked="true"] { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--ring); background: var(--surface); }
+.staff-mode .way[aria-checked="true"] b::before { color: var(--accent-text); }
 .staff-mode .size, .staff-mode .qty button { border-width: 1px; border-radius: 8px; }
-.staff-mode .check-line input { accent-color: var(--accent); }
+.staff-mode .check-line input { accent-color: var(--accent-text); }
 
 /* ---------- Карточки заказов и статусы ---------- */
 .staff-mode .ord { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--surface); box-shadow: var(--shadow-xs); }
@@ -139,7 +141,7 @@
 .staff-mode .ord-top b { font-weight: 700; font-size: 15px; }
 .staff-mode .ord-top time { font-size: 12.5px; }
 .staff-mode .ord-st { border-radius: 999px; font-weight: 600; font-size: 11.5px; padding: 2px 9px; background: var(--hover); }
-.staff-mode .st-new .ord-st { background: var(--soft); color: var(--accent); }
+.staff-mode .st-new .ord-st { background: var(--soft); color: var(--accent-text); }
 .staff-mode .ord-sum b { font-weight: 700; }
 .staff-mode .ord-note, .staff-mode .req { border-radius: 8px; }
 .staff-mode .req { border: 1px solid var(--line); background: var(--bg); }
@@ -160,7 +162,7 @@
 /* ---------- Клиенты и задачи ---------- */
 .staff-mode .cl-tags i { background: var(--hover); font-weight: 500; }
 .staff-mode .cl-tag { border-width: 1px; background: var(--surface); font-weight: 500; }
-.staff-mode .cl-tag[aria-pressed="true"] { background: var(--soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+.staff-mode .cl-tag[aria-pressed="true"] { background: var(--soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent-text); }
 .staff-mode .cl-note { border-radius: 10px; }
 .staff-mode .tk { border-bottom: 0; border-radius: 10px; padding: 10px 8px; margin: 0 -8px; }
 .staff-mode .tk.open { padding: 10px 8px; }
@@ -198,7 +200,7 @@
 .db-alert small { color: var(--muted); font-size: 12px; line-height: 1.3; }
 @media (min-width: 700px) { .db-alerts { gap: 14px; } .db-alert { padding: 12px 16px; } }
 .db-alert.hot { background: var(--soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
-.db-alert.hot b { color: var(--accent); }
+.db-alert.hot b { color: var(--accent-text); }
 
 .db-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
 .db-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-sm); }
@@ -285,7 +287,7 @@
     border: 0; border-radius: 8px; background: transparent; box-shadow: none; color: var(--muted); font-size: 14px; font-weight: 500; text-align: left; }
   html:not(.in-telegram).staff-mode .admin-btn:hover { background: var(--hover); color: var(--ink); }
   html:not(.in-telegram).staff-mode .admin-btn::before { width: 18px; height: 18px; }
-  html:not(.in-telegram).staff-mode .admin-btn.has-new { background: var(--soft); color: var(--accent); }
+  html:not(.in-telegram).staff-mode .admin-btn.has-new { background: var(--soft); color: var(--accent-text); }
   html:not(.in-telegram).staff-mode .admin-btn.drag-ghost { background: var(--surface); }
   html:not(.in-telegram).staff-mode #shopPage { grid-column: 2; width: 100%; max-width: 1240px; padding: 8px 40px 120px; }
   html:not(.in-telegram).staff-mode .sheet, html:not(.in-telegram).staff-mode .sheet.open { grid-column: 2; grid-row: 1; width: 100%; max-width: 920px;
@@ -294,7 +296,7 @@
   html:not(.in-telegram).staff-mode .sheet:has(.db-head) { max-width: 1320px; }
   html:not(.in-telegram).staff-mode .sheet .close { margin-top: 24px; }
   html:not(.in-telegram).staff-mode .admin-btn[aria-current] { background: var(--hover); color: var(--ink); box-shadow: none; }
-  html:not(.in-telegram).staff-mode .admin-btn[aria-current].has-new { background: var(--soft); color: var(--accent); }
+  html:not(.in-telegram).staff-mode .admin-btn[aria-current].has-new { background: var(--soft); color: var(--accent-text); }
   html:not(.in-telegram).staff-mode .cats { padding-top: 24px; }
   html:not(.in-telegram).staff-mode .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px 16px; }
 }

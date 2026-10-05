@@ -1,5 +1,5 @@
-// «Аналитика» (только директор): оформленные заявки за выбранный период, оборот и работа каждого сотрудника.
-// Заявка оформлена, когда сотрудник её принял; оборот — сколько по этим заявкам оплачено кнопкой «Оплатить».
+// «Аналитика» (только директор): оформленные заявки за выбранный период, продажи и работа каждого сотрудника.
+// Заявка оформлена, когда сотрудник её принял; продажи — сколько по этим заявкам оплачено кнопкой «Оплатить».
 import { $, formatPrice, formatDate, escapeHtml, pluralize, haptic } from "./core.js?v=20261001b";
 import { state, api } from "./state.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
@@ -36,7 +36,7 @@ function periodRange() {
 const applications = (n) => `${n} ${pluralize(n, "заявка", "заявки", "заявок")}`;
 const isPaid = (r) => r.paid != null && (r.status === "paid" || r.status === "delivered");
 
-/** Оборот и количество заявок */
+/** Продажи и количество заявок */
 function summary(list) {
   const paid = list.filter(isPaid), waiting = list.filter((r) => r.status === "awaiting_payment");
   const sum = (items, key) => items.reduce((s, r) => s + (Number(r[key]) || 0), 0);
@@ -50,7 +50,7 @@ function summary(list) {
 function summaryHtml(list) {
   const s = summary(list);
   return `<div class="an-grid an-top">
-      <div class="an-total"><span>Оборот</span><b>${formatPrice(s.turnover)}</b><small>оплачено ${s.paidCount} из ${s.count}</small></div>
+      <div class="an-total"><span>Продаж</span><b>${formatPrice(s.turnover)}</b><small>оплачено ${s.paidCount} из ${s.count}</small></div>
       <div class="an-total"><span>Заявок</span><b>${s.count}</b><small>${s.waitingCount ? `ждут оплаты ${s.waitingCount} на ${formatPrice(s.waitingSum)}` : "все оплачены"}</small></div>
     </div>
     ${s.turnover ? `<p class="adm-sub an-split">Наличными ${formatPrice(s.cash)} · картой ${formatPrice(s.card)}</p>` : ""}`;
@@ -66,7 +66,7 @@ const ordersList = (list, withManager) => list.length
   ? list.map((r) => orderRow(r, withManager)).join("")
   : `<p class="adm-sub" style="margin-top:12px">За этот период оформленных заявок нет.</p>`;
 
-/** Сотрудники за период: сколько заявок оформил и оборот, больше оборот — выше */
+/** Сотрудники за период: сколько заявок оформил и продажи, больше продаж — выше */
 function managersOf(list) {
   const byName = new Map();
   for (const r of list) byName.set(r.manager, [...(byName.get(r.manager) || []), r]);
@@ -82,7 +82,7 @@ function staffHtml(list) {
   if (!managers.length) return `<p class="adm-sub" style="margin-top:12px">За этот период оформленных заявок нет.</p>`;
   return `${summaryHtml(list)}${managers.map((m) => `<button class="an-day an-staff" data-manager="${escapeHtml(m.name)}">
     <span><b>${escapeHtml(m.name)}</b><small>оформил ${applications(m.count)}</small></span>
-    <span>${formatPrice(m.turnover)}<small>оборот ›</small></span></button>`).join("")}
+    <span>${formatPrice(m.turnover)}<small>продаж ›</small></span></button>`).join("")}
     <p class="adm-sub" style="margin-top:8px">Заявка засчитывается сотруднику, который её принял и отправил реквизиты.</p>`;
 }
 

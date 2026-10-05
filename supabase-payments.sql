@@ -98,12 +98,34 @@ begin
   return r;
 end $$;
 
-revoke execute on function public.order_mark_paid(bigint, text, numeric), public.payments_stats(date, date) from public;
-grant execute on function public.order_mark_paid(bigint, text, numeric), public.payments_stats(date, date) to anon, authenticated;
+-- ---------- 5. Заявки за период для «Аналитики» (только директор) ----------
+-- Оформленная заявка — принятая сотрудником (для старых заказов — оплаченная через «Оплатить»).
+-- Дата заявки — когда её приняли; менеджер — кто принял. Дни по московскому времени, границы включительно.
+create or replace function public.analytics_orders(p_from date, p_to date)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare r jsonb;
+begin
+  if public.app_role() <> 'admin' then raise exception 'staff:forbidden' using errcode = '42501'; end if;
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', id, 'at', coalesce(accepted_at, paid_at), 'status', status, 'total', total,
+      'customer', customer_name, 'manager', coalesce(accepted_by, paid_by),
+      'method', payment_method, 'paid', paid_amount, 'paid_at', paid_at)
+    order by coalesce(accepted_at, paid_at) desc), '[]'::jsonb)
+  into r
+  from (select * from public.orders
+    where coalesce(accepted_by, paid_by) is not null
+      and (p_from is null or (coalesce(accepted_at, paid_at) at time zone 'Europe/Moscow')::date >= p_from)
+      and (p_to   is null or (coalesce(accepted_at, paid_at) at time zone 'Europe/Moscow')::date <= p_to)
+    order by coalesce(accepted_at, paid_at) desc limit 2000) o;
+  return r;
+end $$;
+
+revoke execute on function public.order_mark_paid(bigint, text, numeric), public.payments_stats(date, date), public.analytics_orders(date, date) from public;
+grant execute on function public.order_mark_paid(bigint, text, numeric), public.payments_stats(date, date), public.analytics_orders(date, date) to anon, authenticated;
 
 notify pgrst, 'reload schema';
 
 -- ---------- Проверка: должно быть «true» ----------
 select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'orders' and column_name = 'payment_method')
-   and exists (select 1 from pg_proc where proname = 'payments_stats')
+   and exists (select 1 from pg_proc where proname = 'analytics_orders')
    and exists (select 1 from pg_trigger where tgname = 'orders_set_accepted_by') as "оплаты и аналитика настроены";

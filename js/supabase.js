@@ -206,6 +206,8 @@ export const supabaseApi = {
   },
   /** Сводка оплат за период (только директор); from / to — "ГГГГ-ММ-ДД" или null */
   paymentsStats: (from, to) => rpc("payments_stats", { p_from: from, p_to: to }),
+  /** Оформленные заявки за период с менеджером, который их принял (только директор) */
+  analyticsOrders: (from, to) => rpc("analytics_orders", { p_from: from, p_to: to }),
   markDelivered: (num) => setStatus(num, "paid", { status: "delivered" }),
 
   /* ---------- Переписка по заказу ---------- */

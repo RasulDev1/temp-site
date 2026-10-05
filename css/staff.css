@@ -72,9 +72,29 @@
 .staff-mode .badge { border-radius: 6px; font-weight: 600; font-size: 11.5px; }
 .staff-mode .drag-ghost { border-radius: 10px; box-shadow: var(--shadow-lg); }
 
+/* ---------- «Товары»: каталог, справа от категорий — «Добавить» ---------- */
+.staff-mode .cat-tools { display: flex; flex: none; gap: 8px; align-items: center; }
+.staff-mode .cat-tools .primary, .staff-mode .cat-tools .ghost { width: auto; margin: 0; padding: 8px 14px; font-size: 13.5px; white-space: nowrap; }
+.staff-mode .admin-btn[aria-current] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--accent); }
+.staff-mode .admin-btn[aria-current]::before { opacity: 1; }
+
+/* ---------- Разделы сотрудника открываются на странице, а не во всплывающем окне ---------- */
+.staff-mode .scrim { display: none; }
+.staff-mode .sheet, .staff-mode .sheet.open { position: relative; inset: auto; width: auto; max-height: none; overflow: visible; transform: none; transition: none;
+  border-radius: 0; background: transparent; box-shadow: none; padding-bottom: 120px; z-index: auto; }
+.staff-mode .sheet:not(.open) { display: none; }
+.staff-mode.sheet-open #shopPage { display: none; }
+.staff-mode .sheet-inner { max-width: none; padding: 18px 0 0; animation: rise .2s var(--ease) both; }
+.staff-mode .sheet .grab { display: none; }
+/* «Назад» — только во вложенных экранах (например, чат заказа), где нет своей ссылки назад */
+.staff-mode .sheet:not(.has-back) .close, .staff-mode .sheet:has(.adm-back, .an-back) .close { display: none; }
+.staff-mode .sheet .close { position: static; display: inline-flex; align-items: center; gap: 4px; width: auto; height: auto; margin-top: 16px; padding: 6px 12px;
+  font-size: 0; }
+.staff-mode .sheet .close::before { content: "← Назад"; font-size: 13px; font-weight: 500; }
+.staff-mode .sheet .close + .sheet-inner { padding-top: 10px; }
+
 /* ---------- Окно раздела (шторка) ---------- */
 .staff-mode .scrim { background: rgba(15, 23, 42, .4); }
-.staff-mode .sheet { border-radius: 16px 16px 0 0; }
 .staff-mode .sheet-inner > h2:first-child, .staff-mode .sheet-inner > h3:first-child { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
 .staff-mode .close { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; color: var(--muted); }
 .staff-mode .close:hover { background: var(--hover); color: var(--ink); }
@@ -173,7 +193,12 @@
   html:not(.in-telegram).staff-mode .admin-btn.has-new { background: var(--soft); color: var(--accent); }
   html:not(.in-telegram).staff-mode .admin-btn.drag-ghost { background: var(--surface); }
   html:not(.in-telegram).staff-mode #shopPage { grid-column: 2; width: 100%; max-width: 1240px; padding: 8px 40px 120px; }
+  html:not(.in-telegram).staff-mode .sheet, html:not(.in-telegram).staff-mode .sheet.open { grid-column: 2; grid-row: 1; width: 100%; max-width: 920px;
+    position: relative; left: auto; top: auto; max-height: none; overflow: visible; transform: none; border-radius: 0; box-shadow: none; padding: 8px 40px 120px; }
+  html:not(.in-telegram).staff-mode .sheet-inner { padding: 24px 0 0; display: block; }
+  html:not(.in-telegram).staff-mode .sheet .close { margin-top: 24px; }
+  html:not(.in-telegram).staff-mode .admin-btn[aria-current] { background: var(--hover); color: var(--ink); box-shadow: none; }
+  html:not(.in-telegram).staff-mode .admin-btn[aria-current].has-new { background: var(--soft); color: var(--accent); }
   html:not(.in-telegram).staff-mode .cats { padding-top: 24px; }
   html:not(.in-telegram).staff-mode .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px 16px; }
-  html:not(.in-telegram).staff-mode .sheet { border-radius: 14px; box-shadow: var(--shadow-lg); }
 }

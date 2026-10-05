@@ -6,7 +6,8 @@
 --
 --  Что делает:
 --   • сообщение менеджера в чате заказа на сайте → бот сразу пишет его покупателю в Telegram;
---   • ответ покупателя боту (текст, фото, PDF) → функция telegram-bot кладёт его в чат заказа на сайте.
+--   • ответ покупателя боту (текст, фото, PDF) → функция telegram-bot кладёт его в чат заказа на сайте;
+--   • менеджер принял заказ и отправил реквизиты → бот пишет их покупателю так же, как сообщение из чата.
 --  Токен бота берётся из Supabase Vault — тот же, что для входа через Telegram.
 -- =====================================================================
 
@@ -122,9 +123,45 @@ drop trigger if exists order_messages_to_bot on public.order_messages;
 create trigger order_messages_to_bot after insert on public.order_messages
   for each row execute function public.order_messages_to_bot();
 
+-- ---------- 4. Менеджер принял заказ и отправил реквизиты → бот пишет покупателю ----------
+create or replace function public.orders_requisites_to_bot()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  local_date timestamp; token text; txt text;
+  months text[] := array['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                         'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+begin
+  if not (old.status = 'new' and new.status = 'awaiting_payment') or new.user_id is null then return null; end if;
+  select decrypted_secret into token from vault.decrypted_secrets where name = 'telegram_bot_token' limit 1;
+  if token is null or token = 'ВСТАВЬТЕ_ТОКЕН_БОТА' then return null; end if;
+  local_date := new.created_at at time zone 'Europe/Moscow';
+  -- как сообщение менеджера в чате: без номера заказа, с датой оформления
+  txt := '💬 Менеджер ТЕМП · заказ от ' || extract(day from local_date)::int || ' ' || months[extract(month from local_date)::int]
+      || E'\n\nЗаказ принят! Реквизиты для оплаты:\n' || coalesce(nullif(trim(new.payment_details), ''), 'уточните у менеджера')
+      || case when coalesce(trim(new.manager_note), '') <> '' then E'\n\n' || trim(new.manager_note) else '' end
+      || E'\n\nПосле оплаты пришлите чек сюда же — ответить можно прямо здесь.';
+  -- ответ покупателя (чек) уйдёт в чат этого заказа
+  insert into public.bot_chat_state (telegram_id, order_id) values (new.user_id, new.id)
+  on conflict (telegram_id) do update set order_id = excluded.order_id, updated_at = now();
+  begin
+    perform net.http_post(
+      url := 'https://api.telegram.org/bot' || token || '/sendMessage',
+      body := jsonb_build_object('chat_id', new.user_id, 'text', left(txt, 4000),
+        'reply_markup', jsonb_build_object('inline_keyboard', jsonb_build_array(jsonb_build_array(
+          jsonb_build_object('text', '📦 Открыть заказ', 'web_app', jsonb_build_object('url', public.bot_shop_url() || '?tab=orders')))))),
+      headers := '{"Content-Type": "application/json"}'::jsonb);
+  exception when others then null; -- бот не смог отправить — реквизиты всё равно видны на сайте в «Мои заказы»
+  end;
+  return null;
+end $$;
+drop trigger if exists orders_requisites_to_bot on public.orders;
+create trigger orders_requisites_to_bot after update of status on public.orders
+  for each row execute function public.orders_requisites_to_bot();
+
 notify pgrst, 'reload schema';
 
 -- ---------- Проверка: должно быть «true» ----------
 select exists (select 1 from pg_extension where extname = 'pg_net')           as "отправка из базы включена",
        exists (select 1 from pg_proc where proname = 'bot_customer_message') as "приём сообщений из бота готов",
-       exists (select 1 from pg_tables where tablename = 'bot_chat_state')    as "выбор заказа в боте готов";
+       exists (select 1 from pg_tables where tablename = 'bot_chat_state')    as "выбор заказа в боте готов",
+       exists (select 1 from pg_trigger where tgname = 'orders_requisites_to_bot') as "реквизиты приходят в бот";

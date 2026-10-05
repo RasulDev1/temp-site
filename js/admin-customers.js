@@ -5,7 +5,7 @@ import { state, api } from "./state.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 import { orderItemsHtml } from "./cart.js?v=20261001b";
 import { openAdminOrders } from "./admin-orders.js?v=20261001b";
-import { openTaskForm, tasksListHtml, toggleTaskDone, deleteTask } from "./admin-tasks.js?v=20261001b";
+import { openTaskForm, tasksListHtml, handleTaskTap, deleteTask } from "./admin-tasks.js?v=20261001b";
 
 const TAGS = ["Постоянный", "VIP", "Опт", "Проблемный"];
 const SORTS = [["recent", "Недавние"], ["spent", "Больше купили"], ["sleeping", "Давно не покупали"]];
@@ -220,8 +220,7 @@ function onClick(e) {
     const c = findCustomer(open.id);
     return openTaskForm({ customerId: open.id, customer: c?.name || open.card?.orders?.[0]?.name || "" }, reopen);
   }
-  const done = t.closest("[data-task-done]");
-  if (done) return toggleTaskDone(done, loadCard);
+  if (handleTaskTap(e, loadCard)) return;
   if (t.dataset.taskEdit) { haptic(); return openTaskForm({}, reopen, open.tasks.find((x) => x.id === Number(t.dataset.taskEdit))); }
   if (t.dataset.taskDelete) return deleteTask(t, loadCard);
 }

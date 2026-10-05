@@ -69,16 +69,49 @@ async function load() {
 }
 
 /* ---------- Список ---------- */
-const taskHtml = (t) => `<div class="tk${t.done_at ? " tk-done" : ""}${isDue(t) ? " due" : ""}">
-  <button class="tk-check" data-task-done="${t.id}" aria-pressed="${Boolean(t.done_at)}" aria-label="${t.done_at ? "Вернуть в работу" : "Выполнено"}">✓</button>
+// Нажатие на задачу раскрывает действия: «Подтвердить выполнение» или «Убрать статус «Выполнено»» (с вопросом «точно?»)
+const taskHtml = (t) => `<div class="tk${t.done_at ? " tk-done" : ""}${isDue(t) ? " due" : ""}" data-task-open="${t.id}">
+  <span class="tk-check" aria-hidden="true">✓</span>
   <div class="tk-body">
     <p class="tk-title">${escapeHtml(t.title)}</p>
     <small>${formatDate(t.due)}${t.customer ? ` · <button class="link" data-task-customer="${Number(t.customer_id)}">${escapeHtml(t.customer)}</button>` : ""}${t.order_id ? ` · заказ №${Number(t.order_id)}` : ""}</small>
     <small>${t.mine ? "Вам" : escapeHtml(t.assignee || "")}${t.created_by && t.created_by !== t.assignee ? ` · от ${escapeHtml(t.created_by)}` : ""}${t.done_at ? ` · выполнено ${formatDate(t.done_at)}${t.done_by ? `, ${escapeHtml(t.done_by)}` : ""}` : ""}</small>
-    ${t.done_at ? "" : `<span class="tk-tools"><button class="link" data-task-edit="${t.id}">Изменить</button>${t.can_delete ? `<button class="link" data-task-delete="${t.id}">Удалить</button>` : ""}</span>`}
+    <div class="tk-actions">${t.done_at
+      ? `<button class="ghost" data-task-undo>Убрать статус «Выполнено»</button>
+        <div class="tk-confirm" hidden><p>Точно убрать статус «Выполнено»? Задача снова станет активной.</p>
+          <div class="ord-actions"><button class="ghost danger" data-task-done="${t.id}" data-done="0">Да, убрать</button><button class="ghost" data-task-undo-cancel>Отмена</button></div></div>`
+      : `<button class="primary sm" data-task-done="${t.id}" data-done="1">Подтвердить выполнение</button>
+        <span class="tk-tools"><button class="link" data-task-edit="${t.id}">Изменить</button>${t.can_delete ? `<button class="link" data-task-delete="${t.id}">Удалить</button>` : ""}</span>`}</div>
   </div></div>`;
 
 export const tasksListHtml = (list) => list.map(taskHtml).join("");
+
+/** Нажатия по задаче (раскрыть, подтвердить, убрать статус). true — нажатие обработано. after — что обновить. */
+export function handleTaskTap(e, after = load) {
+  const t = e.target;
+  const done = t.closest("[data-task-done]");
+  if (done) { toggleTaskDone(done, after); return true; }
+  const row = t.closest("[data-task-open]");
+  if (!row) return false;
+  if (t.closest("[data-task-undo]")) {
+    haptic("medium");
+    row.querySelector("[data-task-undo]").hidden = true;
+    row.querySelector(".tk-confirm").hidden = false;
+    return true;
+  }
+  if (t.closest("[data-task-undo-cancel]")) {
+    haptic();
+    row.querySelector("[data-task-undo]").hidden = false;
+    row.querySelector(".tk-confirm").hidden = true;
+    return true;
+  }
+  if (t.closest("button, a")) return false; // «Изменить», «Удалить», клиент — у каждого свой обработчик
+  haptic();
+  const opening = !row.classList.contains("open");
+  row.parentElement.querySelectorAll(".tk.open").forEach((x) => x.classList.remove("open"));
+  row.classList.toggle("open", opening);
+  return true;
+}
 
 function telegramHtml() {
   if (!info) return "";
@@ -108,7 +141,7 @@ function render() {
   const list = tasks || [];
   const groups = GROUPS.map(([id, title]) => [title, list.filter((t) => groupOf(t) === id)]).filter(([, items]) => items.length);
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Задачи</h2>
-    <p class="adm-sub">Звонки, обещания клиентам и другие дела с напоминанием в срок. Задачу по клиенту удобно ставить из его карточки.</p>
+    <p class="adm-sub">Звонки, обещания клиентам и другие дела с напоминанием в срок. Нажмите на задачу, чтобы подтвердить выполнение.</p>
     ${isDirector() ? `<div class="order-groups" role="tablist">${[["mine", "Мои"], ["all", "Все сотрудники"]].map(([id, title]) =>
       `<button class="chip" role="tab" data-scope="${id}" aria-pressed="${id === scope}">${title}</button>`).join("")}</div>` : ""}
     <button class="primary" data-task-new>Новая задача</button>
@@ -173,7 +206,7 @@ async function saveTask(button) {
 
 /** Отметить выполненной или вернуть в работу; after — что перерисовать (список задач или карточку клиента) */
 export async function toggleTaskDone(button, after = load) {
-  const done = button.getAttribute("aria-pressed") !== "true";
+  const done = button.dataset.done === "1";
   button.disabled = true;
   try {
     await api.taskDone(Number(button.dataset.taskDone), done);
@@ -220,8 +253,7 @@ function onClick(e) {
   if (t.closest("[data-task-save]")) return saveTask(t.closest("[data-task-save]"));
   const quick = t.closest("[data-quick-day]");
   if (quick) { haptic(); readForm(); form.date = addDays(Number(quick.dataset.quickDay)); return render(); }
-  const done = t.closest("[data-task-done]");
-  if (done) return toggleTaskDone(done);
+  if (handleTaskTap(e)) return;
   if (t.dataset.taskEdit) { haptic(); return openTaskForm({}, null, tasks.find((x) => x.id === Number(t.dataset.taskEdit))); }
   if (t.dataset.taskDelete) return deleteTask(t);
   if (t.dataset.taskCustomer) { haptic(); return openCustomer(t.dataset.taskCustomer, openTasks); }

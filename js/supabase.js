@@ -178,6 +178,12 @@ export const supabaseApi = {
     if (error) fail(error);
     return { orders: await withChat(data.map(toOrder)), canArchive: archiveReady };
   },
+  /** Все заказы для «Главной» — прямо из таблицы, со способом и суммой оплаты */
+  async dashboardOrders() {
+    const { data, error } = await db().from("orders").select("*").order("id", { ascending: false }).limit(3000);
+    if (error) fail(error);
+    return data.map(toOrder);
+  },
   /** Скрыть заказы из списка персонала (покупатель их по-прежнему видит) */
   async archiveOrders(nums) {
     const { error } = await db().from("order_archive")

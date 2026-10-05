@@ -300,3 +300,4 @@
   html:not(.in-telegram).staff-mode .cats { padding-top: 24px; }
   html:not(.in-telegram).staff-mode .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px 16px; }
 }
+.db-unknown { margin: 8px 0 0; font-size: 12px; }

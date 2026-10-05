@@ -17,6 +17,7 @@ import { initAnalytics } from "./admin-analytics.js?v=20261001b";
 import { initCustomers } from "./admin-customers.js?v=20261001b";
 import { initTasks, openTasks } from "./admin-tasks.js?v=20261001b";
 import { initDashboard, openDashboard } from "./admin-dashboard.js?v=20261001b";
+import { initReviews } from "./admin-reviews.js?v=20261001b";
 import { initAdminBarSorting } from "./admin-bar-sort.js?v=20261001b";
 import { openStaffLogin } from "./staff-login.js?v=20261001b";
 import { initProductSorting } from "./sort.js?v=20261001b";
@@ -38,7 +39,7 @@ syncMainButton();
 
 /** Подсвечиваем в меню сотрудника раздел, который сейчас открыт */
 const SECTION_BUTTONS = { dashboard: "adminHomeButton", adminOrders: "adminOrdersButton", chat: "adminOrdersButton", customers: "adminCustomersButton",
-  tasks: "adminTasksButton", analytics: "adminAnalyticsButton", staff: "adminStaffButton" };
+  tasks: "adminTasksButton", reviews: "adminReviewsButton", analytics: "adminAnalyticsButton", staff: "adminStaffButton" };
 function syncActiveSection() {
   const active = SECTION_BUTTONS[state.view] || "adminProductsButton";
   document.querySelectorAll("#adminBar .admin-btn").forEach((b) => b.toggleAttribute("aria-current", b.id === active));
@@ -61,6 +62,7 @@ if (!hasServer) {
     $("adminOrdersButton").hidden = !useSupabase;
     $("adminCustomersButton").hidden = !useSupabase; // клиенты собираются из заказов в базе
     $("adminTasksButton").hidden = !useSupabase;
+    $("adminReviewsButton").hidden = !useSupabase; // отзывы хранятся в базе
     $("adminHomeButton").hidden = !useSupabase; // дашборд считается по заказам в базе
     $("adminStaffButton").hidden = role !== "director";
     $("adminAnalyticsButton").hidden = role !== "director" || !useSupabase; // оплаты считает база
@@ -79,6 +81,7 @@ if (!hasServer) {
       initAdminOrders();
       initCustomers();
       initTasks();
+      initReviews();
       initDashboard();
       if (params.has("tasks")) openTasks(); // «Открыть задачи» из напоминания бота
       else if (focusOrder) openAdminOrders(focusOrder);

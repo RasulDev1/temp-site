@@ -5,6 +5,7 @@ import { state, saveCart, findProduct } from "./state.js?v=20261001b";
 import { colorName, swatchBackground, stockLeft, isUnavailable, isSoldOut } from "./catalog.js?v=20261001b";
 import { productImage, swapImage, photoForColor } from "./photos.js?v=20261001b";
 import { sheetBody, openSheet, closeSheet, syncMainButton } from "./nav.js?v=20261001b";
+import { loadRatings, ratingHtml, ratingLineHtml, showProductReviews, handleReviewTap } from "./reviews.js?v=20261001b";
 
 const tint = (color) => `color-mix(in srgb, ${color} 14%, var(--bg))`;
 const priceHtml = (p) => `<b>${formatPrice(p.price)}</b>${p.oldPrice ? `<s>${formatPrice(p.oldPrice)}</s>` : ""}`;
@@ -29,6 +30,7 @@ export function renderGrid() {
       </button>
       <p class="name">${p.name}</p>
       <p class="cost">${priceHtml(p)}</p>
+      ${ratingHtml(p.id)}
     </article>`).join("") || `<p class="empty">В этой категории пока пусто</p>`;
 }
 
@@ -42,7 +44,8 @@ function stockNote(product, color, size) {
   return left <= 5 ? `Осталось ${left} шт.` : "";
 }
 
-export function openProduct(id) {
+/** Карточка товара; writeReview — сразу открыть форму отзыва (кнопка «Оставить отзыв» в «Мои заказы») */
+export function openProduct(id, writeReview = false) {
   const p = findProduct(id);
   if (!p) return;
   const onlySize = p.sizes.length === 1 && !isUnavailable(p, p.colors[0], p.sizes[0]) ? p.sizes[0] : null;
@@ -54,6 +57,7 @@ export function openProduct(id) {
     </div>
     <h2 class="p-name">${p.name}</h2>
     <p class="p-price cost">${priceHtml(p)}</p>
+    ${ratingLineHtml(p.id)}
     <p class="p-desc">${p.description}</p>
     <p class="label">Цвет: <span id="colorLabel">${colorName(p, p.colors[0])}</span></p>
     <div class="opts" id="swatches">${p.colors.map((c) => `<button class="swatch" data-color="${c}" style="background:${swatchBackground(p, c)}"
@@ -63,9 +67,11 @@ export function openProduct(id) {
       ${isUnavailable(p, p.colors[0], s) ? "disabled" : ""}>${s}</button>`).join("")}</div>
     <p class="left" id="stockNote">${stockNote(p, p.colors[0], onlySize)}</p>
     <p class="hint" id="hint"></p>
-    <button class="primary browser-only" id="addToCart">Добавить в корзину · ${formatPrice(p.price)}</button>`;
+    <button class="primary browser-only" id="addToCart">Добавить в корзину · ${formatPrice(p.price)}</button>
+    <section class="rv" id="reviews"></section>`;
 
   sheetBody.onclick = (e) => {
+    if (handleReviewTap(e)) return;
     const color = e.target.closest("[data-color]")?.dataset.color;
     const size = e.target.closest("[data-size]:not(:disabled)")?.dataset.size;
     if (color) { haptic(); selectColor(p, color); }
@@ -73,6 +79,7 @@ export function openProduct(id) {
     if (e.target.id === "addToCart") addSelectedToCart();
   };
   openSheet("product");
+  showProductReviews(id, writeReview);
 }
 
 function selectColor(p, color) {
@@ -156,6 +163,8 @@ export function initShop() {
     if (state.isAdmin && state.editProduct && document.documentElement.classList.contains("staff-mode")) state.editProduct(Number(id));
     else openProduct(Number(id));
   };
+  on("ratings", renderGrid);
+  loadRatings();
   on("catalog", () => {
     renderCategories();
     renderGrid();

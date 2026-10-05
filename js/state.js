@@ -23,6 +23,8 @@ export const state = {
   variants: {},         // id → { offColors, offSizes, offCombos }
   stock: {},            // id → { qty: { "цвет|размер": штук } }
   costs: null,          // id → закупочная цена (только сотрудникам; null — не настроено в базе)
+  ratings: {},          // id товара → { avg, count }: оценки из отзывов (supabase-reviews.sql)
+  myReviews: {},        // id товара → оценка, которую поставил этот покупатель
   catalogLoaded: false,
 
   cart: storage.get("temp_cart", []),

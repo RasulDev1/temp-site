@@ -11,15 +11,17 @@ let suppressClick = false;  // после перетаскивания кноп�
 const bar = () => $("adminBar");
 const buttonIds = () => [...bar().querySelectorAll(".admin-btn")].map((b) => b.id);
 
-/** Сохранённый порядок; новые кнопки, которых не было при сохранении, остаются на своих местах в конце */
+/** Сохранённый порядок кнопок на этом устройстве */
 function applySavedOrder() {
+  const original = buttonIds();
   const saved = storage.get(ORDER_KEY, []);
   if (!Array.isArray(saved) || !saved.length) return;
   for (const id of saved) {
     const button = $(id);
     if (button?.parentElement === bar()) bar().append(button);
   }
-  for (const id of buttonIds()) if (!saved.includes(id)) bar().append($(id));
+  // новые кнопки, которых не было при сохранении (например, «Главная»), встают на своё место из разметки
+  original.forEach((id, i) => { if (!saved.includes(id)) bar().insertBefore($(id), bar().children[i] || null); });
 }
 
 function onDown(e) {

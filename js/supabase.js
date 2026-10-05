@@ -235,6 +235,16 @@ export const supabaseApi = {
   customerSourceSet: (id, source) => rpc("customer_source_set", { p_user_id: id, p_source: source || null }),
   exportOrders: (from, to) => rpc("export_orders", { p_from: from, p_to: to }),
 
+  /* ---------- Отзывы о товарах (supabase-reviews.sql) ---------- */
+  reviewsSummary: () => rpc("reviews_summary"),
+  productReviews: (id) => rpc("product_reviews_get", { p_product: id }),
+  myReviews: () => rpc("my_reviews"),
+  reviewSave: (id, rating, body) => rpc("review_save", { p_product: id, p_rating: rating, p_body: body }),
+  reviewDelete: (reviewId) => rpc("review_delete", { p_id: reviewId }),
+  reviewsList: () => rpc("reviews_list"),
+  reviewHide: (reviewId, hidden) => rpc("review_hide", { p_id: reviewId, p_hidden: Boolean(hidden) }),
+  reviewReply: (reviewId, text) => rpc("review_reply", { p_id: reviewId, p_text: text || null }),
+
   /* ---------- Переписка по заказу ---------- */
   async chatMessages(num) {
     const { data, error } = await db().from("order_messages")

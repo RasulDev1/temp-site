@@ -8,6 +8,8 @@ import { colorName, swatchBackground, stockLeft, refreshCatalog } from "./catalo
 import { productImage } from "./photos.js?v=20261001b";
 import { sheetBody, openSheet, closeSheet, setTab, openCart, syncMainButton } from "./nav.js?v=20261001b";
 import { chatButtonHtml, openChat, onChatEvent } from "./chat.js?v=20261001b";
+import { openProduct } from "./shop.js?v=20261001b";
+import { loadMyReviews } from "./reviews.js?v=20261001b";
 
 const tint = (color) => `color-mix(in srgb, ${color} 14%, var(--bg))`;
 const emptyState = (title, text, buttonId) =>
@@ -231,9 +233,22 @@ function orderLinePhoto(line) {
   return /^https:\/\/\S+$/.test(line.photo || "") ? `<img class="ph" src="${escapeHtml(line.photo)}" alt="${escapeHtml(line.name)}" loading="lazy">` : "";
 }
 
-export const orderItemsHtml = (order) =>
-  `<ul class="ord-items">${(order.items || []).map((l) => `<li><span class="thumb">${orderLinePhoto(l)}</span>
-    <span>${escapeHtml(l.name)}, ${escapeHtml(l.colorName)}, размер ${escapeHtml(l.size)} — ${Number(l.qty)} шт.</span></li>`).join("")}</ul>`;
+/** Отзыв о товаре можно оставить, когда заказ вручён (в том числе если потом оформлен возврат) */
+const REVIEW_STATUSES = ["delivered", "return_requested", "returned"];
+function reviewButtonHtml(order, line, seen) {
+  const id = Number(line.id);
+  if (!useSupabase || !REVIEW_STATUSES.includes(order.status) || !id || seen.has(id) || !findProduct(id)) return "";
+  seen.add(id); // один товар в разных цветах или размерах — одна кнопка
+  const mine = state.myReviews[id];
+  return `<button class="link ord-review" data-review="${id}">${mine ? `Ваш отзыв: ${"★".repeat(mine)}` : "Оставить отзыв"}</button>`;
+}
+
+/** reviews — показать у позиций кнопку отзыва (только в «Мои заказы» покупателя) */
+export const orderItemsHtml = (order, reviews = false) => {
+  const seen = new Set();
+  return `<ul class="ord-items">${(order.items || []).map((l) => `<li><span class="thumb">${orderLinePhoto(l)}</span>
+    <span>${escapeHtml(l.name)}, ${escapeHtml(l.colorName)}, размер ${escapeHtml(l.size)} — ${Number(l.qty)} шт.${reviews ? reviewButtonHtml(order, l, seen) : ""}</span></li>`).join("")}</ul>`;
+};
 
 /* ---------- Возврат товара ---------- */
 const RETURN_DAYS = 14, DEFECT_DAYS = 180;
@@ -305,7 +320,7 @@ function myOrderHtml(o) {
   const status = o.status || "new", details = paymentDetails(o), total = formatPrice(Number(o.total) || 0);
   return `<article class="ord st-${status}">
     <div class="ord-top my"><b>Заказ от ${orderDate(o.date)}</b><span class="ord-st">${ORDER_STATUS[status]}</span></div>
-    ${orderItemsHtml(o)}
+    ${orderItemsHtml(o, true)}
     <p class="ord-way">${escapeHtml(o.way)}${o.addr ? ": " + escapeHtml(o.addr) : ""}</p>
     <p class="ord-sum">Итого <b>${total}</b></p>
     ${status === "accepted" && details ? `${o.note ? `<p class="ord-note">${escapeHtml(o.note)}</p>` : ""}
@@ -346,6 +361,7 @@ export async function renderMyOrders(reload = false) {
   try {
     state.myOrders = (await api.myOrders()).orders || [];
     storage.set("temp_my_orders", state.myOrders);
+    if (state.myOrders.some((o) => REVIEW_STATUSES.includes(o.status))) await loadMyReviews();
     if (state.tab === "orders") draw();
   } catch {}
 }
@@ -361,6 +377,8 @@ export function initCart() {
   $("ordersPage").oninput = (e) => { if (e.target.id === "returnComment" && returnDraft) returnDraft.comment = e.target.value; };
   $("ordersPage").onclick = (e) => {
     if (e.target.id === "goShopping") setTab("shop");
+    const review = e.target.closest("[data-review]");
+    if (review) { haptic(); return openProduct(Number(review.dataset.review), true); }
     const group = e.target.closest("[data-orders-group]")?.dataset.ordersGroup;
     if (group && group !== ordersGroup) { haptic(); ordersGroup = group; return renderMyOrders(); }
     const pay = e.target.closest("[data-pay]");
@@ -385,6 +403,7 @@ export function initCart() {
   };
   on("catalog", () => state.tab === "cart" && renderCartPage());
   on("chatseen", () => state.tab === "orders" && renderMyOrders()); // убрать отметку «новое»
+  on("myreviews", () => state.tab === "orders" && renderMyOrders()); // «Ваш отзыв: ★★★★★» вместо «Оставить отзыв»
   document.addEventListener("visibilitychange", () => !document.hidden && state.tab === "orders" && renderMyOrders(true));
   if (useSupabase) watchMyOrders();
 }

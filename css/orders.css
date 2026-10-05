@@ -123,3 +123,35 @@
 .sources .chip { margin: 0 6px 6px 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-weight: 500; }
 .sources .chip::after { display: none; }
 .sources .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
+/* ---------- Отзывы о товарах ---------- */
+.card .rate { margin: 3px 2px 0; font-size: 12.5px; color: var(--muted); }
+.card .rate b { color: var(--ink); font-weight: 700; }
+.card .rate b, .stars, .rate-line .stars { letter-spacing: .02em; }
+.stars { color: #F2B400; white-space: nowrap; }
+.rate-line { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 0; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13.5px; cursor: pointer; }
+.rate-line:hover { color: var(--ink); }
+.rv { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
+.rv:empty { display: none; }
+.rv-title { margin: 0 0 10px; font-size: 18px; }
+.rv-title span { color: var(--muted); font-size: 14px; font-weight: 600; margin-left: 4px; }
+.rv-item { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rv-item:last-of-type { border-bottom: 0; }
+.rv-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.rv-body { margin: 6px 0 4px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rv-item small, .adm-rv small { color: var(--muted); font-size: 12px; }
+.rv-reply { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); font-size: 13.5px; }
+.rv-reply b { font-size: 12px; }
+.rv-reply p { margin: 3px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rv-write { width: 100%; margin: 4px 0 6px; }
+.rv-form, .rv-mine { margin: 0 0 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
+.rv-mine .rv-item { padding-top: 0; border: 0; }
+.rv-form .label, .rv-mine .label { margin-top: 0; }
+.rv-stars { display: flex; gap: 4px; margin: 2px 0 10px; }
+.rv-star { width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--line); font-size: 30px; line-height: 1; cursor: pointer; padding: 0; }
+.rv-star.on { color: #F2B400; }
+.rv-form textarea { width: 100%; min-height: 90px; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface, var(--bg)); color: var(--ink); font: inherit; font-size: 14px; resize: vertical; }
+.rv-tools { display: flex; gap: 16px; margin-top: 6px; }
+.rv-tools .link { padding: 0; font-size: 13px; }
+.rv-more { margin-top: 8px; padding: 0; }
+.ord-review { display: block; margin-top: 4px; padding: 0; font-size: 13px; }

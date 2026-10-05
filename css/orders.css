@@ -80,3 +80,19 @@
 .cl-note small { color: var(--muted); font-size: 12px; }
 .cl-note .link { font-size: 12px; padding: 0; }
 .cl-row .cl-tags + small { margin-top: 2px; }
+
+/* Задачи */
+.tk { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.tk-check { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg); color: transparent; font-weight: 700; font-size: 14px; }
+.tk-check[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: #fff; }
+.tk.due .tk-check { border-color: var(--danger); }
+.tk-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tk-title { margin: 0; font-weight: 600; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tk.tk-done .tk-title { text-decoration: line-through; color: var(--muted); }
+.tk.due .tk-body > small:first-of-type { color: var(--danger); }
+.tk-body small { color: var(--muted); font-size: 12px; }
+.tk-body small .link, .tk-tools .link { font-size: 12px; padding: 0; }
+.tk-tools { display: flex; gap: 14px; margin-top: 2px; }
+.tk-tg { margin-top: 18px; }
+.tk-tg .ghost { width: 100%; }
+[data-task-new] { margin-top: 8px; }

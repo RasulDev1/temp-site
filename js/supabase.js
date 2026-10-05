@@ -243,6 +243,20 @@ export const supabaseApi = {
   customerNoteDelete: (noteId) => rpc("customer_note_delete", { p_id: noteId }),
   customerTagsSet: (id, tags) => rpc("customer_tags_set", { p_user_id: id, p_tags: tags }),
 
+  /* ---------- Задачи и напоминания (supabase-tasks.sql) ---------- */
+  tasksList: (all, customerId) => rpc("tasks_list", { p_all: Boolean(all), p_customer: customerId ?? null }),
+  tasksStaff: () => rpc("tasks_staff"),
+  taskSave: (t) => rpc("task_save", { p_id: t.id ?? null, p_title: t.title, p_due: t.due, p_customer: t.customerId ?? null,
+    p_customer_name: t.customer ?? null, p_order: t.orderId ?? null, p_assignee: t.assigneeId ?? null }),
+  taskDone: (id, done) => rpc("task_done", { p_id: id, p_done: done }),
+  taskDelete: (id) => rpc("task_delete", { p_id: id }),
+  /** Напоминания в Telegram: привязать Telegram, из которого открыт магазин (нужен вход через Telegram) */
+  async staffLinkTelegram() {
+    if (!(await supabaseLogin())) throw { code: "no_telegram" };
+    return rpc("staff_link_telegram");
+  },
+  staffUnlinkTelegram: () => rpc("staff_unlink_telegram"),
+
   /* ---------- «Сотрудники»: аккаунты с логином и паролем (только директор) ---------- */
   staffList: () => rpc("staff_list"),
   staffSave: (id, name, login, password) => rpc("staff_save", { p_id: id || null, p_name: name, p_login: login, p_password: password || null }),

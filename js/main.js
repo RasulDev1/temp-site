@@ -14,6 +14,7 @@ import { openStaffAccess } from "./staff-access.js?v=20261001b";
 import { initStaffManager } from "./admin-staff.js?v=20261001b";
 import { initAnalytics } from "./admin-analytics.js?v=20261001b";
 import { initCustomers } from "./admin-customers.js?v=20261001b";
+import { initTasks, openTasks } from "./admin-tasks.js?v=20261001b";
 import { openStaffLogin } from "./staff-login.js?v=20261001b";
 import { initProductSorting } from "./sort.js?v=20261001b";
 
@@ -48,6 +49,7 @@ if (!hasServer) {
     // С Supabase заказы видны в «Заказах» (ключ GitHub не нужен); без него приходят в Telegram сообщениями
     $("adminOrdersButton").hidden = !useSupabase;
     $("adminCustomersButton").hidden = !useSupabase; // клиенты собираются из заказов в базе
+    $("adminTasksButton").hidden = !useSupabase;
     $("adminStaffButton").hidden = role !== "director";
     $("adminAnalyticsButton").hidden = role !== "director" || !useSupabase; // оплаты считает база
     setStaffMode(state.isAdmin);
@@ -62,6 +64,8 @@ if (!hasServer) {
       ordersReady = true;
       initAdminOrders();
       initCustomers();
+      initTasks();
+      if (new URLSearchParams(location.search).has("tasks")) openTasks(); // «Открыть задачи» из напоминания бота
       const focusOrder = Number(new URLSearchParams(location.search).get("order") || telegram?.initDataUnsafe?.start_param?.replace(/^order_/, ""));
       if (focusOrder) openAdminOrders(focusOrder);
     }

@@ -5,6 +5,7 @@ import { state, api } from "./state.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 import { orderItemsHtml } from "./cart.js?v=20261001b";
 import { openAdminOrders } from "./admin-orders.js?v=20261001b";
+import { openTaskForm, tasksListHtml, toggleTaskDone, deleteTask } from "./admin-tasks.js?v=20261001b";
 
 const TAGS = ["Постоянный", "VIP", "Опт", "Проблемный"];
 const SORTS = [["recent", "Недавние"], ["spent", "Больше купили"], ["sleeping", "Давно не покупали"]];
@@ -19,7 +20,7 @@ const errorText = (error) => ERRORS[error?.code] || "Не удалось заг�
 
 let customers = null, listError = "";
 let query = "", sort = "recent";
-let open = null;     // { id, card, error, back } — открытая карточка
+let open = null;     // { id, card, tasks, error, back } — открытая карточка
 let noteDraft = "";
 
 const ordersWord = (n) => `${n} ${pluralize(n, "заказ", "заказа", "заказов")}`;
@@ -109,6 +110,9 @@ function renderCard() {
     <h3 class="an-h">Метки</h3>
     <div class="cl-tagbar">${[...new Set([...TAGS, ...tags])].map((t) =>
       `<button class="cl-tag" data-tag="${escapeHtml(t)}" aria-pressed="${tags.includes(t)}">${escapeHtml(t)}</button>`).join("")}</div>
+    ${open.tasks ? `<h3 class="an-h">Задачи</h3>
+    ${tasksListHtml(open.tasks.filter((t) => !t.done_at || daysAgo(t.done_at) < 3))}
+    <button class="ghost" data-customer-task>Поставить задачу</button>` : ""}
     <h3 class="an-h">Заметки</h3>
     <label class="field"><textarea id="clNote" maxlength="1000" placeholder="Например: носит размер L, просил звонить после 18:00">${escapeHtml(noteDraft)}</textarea></label>
     <p class="hint" id="clHint"></p>
@@ -122,8 +126,8 @@ function renderCard() {
 async function loadCard() {
   const id = open.id;
   try {
-    const card = await api.customerCard(id);
-    if (open?.id === id) { open.card = card; open.error = ""; }
+    const [card, tasks] = await Promise.all([api.customerCard(id), api.tasksList(false, id).catch(() => null)]);
+    if (open?.id === id) { open.card = card; open.tasks = tasks; open.error = ""; }
   } catch (error) {
     if (open?.id === id) open.error = errorText(error);
   }
@@ -132,7 +136,7 @@ async function loadCard() {
 
 /** Открыть карточку клиента. back — вернуться к заказу (из «Заказов»), иначе к списку клиентов. */
 export function openCustomer(id, back = null) {
-  open = { id: Number(id), card: null, error: "", back };
+  open = { id: Number(id), card: null, tasks: null, error: "", back };
   noteDraft = "";
   sheetBody.onclick = onClick;
   openSheet("customers", back || closeCard);
@@ -209,6 +213,17 @@ function onClick(e) {
   if (t.closest("[data-note-add]")) return addNote(t.closest("[data-note-add]"));
   if (t.dataset.noteDel) return deleteNote(t);
   if (t.dataset.openOrder) { haptic(); return openAdminOrders(Number(t.dataset.openOrder)); }
+  // задачи по клиенту: после формы — обратно в его карточку
+  const reopen = ((id, prev) => () => openCustomer(id, prev))(open?.id, open?.back);
+  if (t.closest("[data-customer-task]")) {
+    haptic();
+    const c = findCustomer(open.id);
+    return openTaskForm({ customerId: open.id, customer: c?.name || open.card?.orders?.[0]?.name || "" }, reopen);
+  }
+  const done = t.closest("[data-task-done]");
+  if (done) return toggleTaskDone(done, loadCard);
+  if (t.dataset.taskEdit) { haptic(); return openTaskForm({}, reopen, open.tasks.find((x) => x.id === Number(t.dataset.taskEdit))); }
+  if (t.dataset.taskDelete) return deleteTask(t, loadCard);
 }
 
 export function openCustomers() {

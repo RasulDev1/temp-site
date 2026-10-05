@@ -12,6 +12,7 @@ import { hasGitHubKey } from "./github.js?v=20261001b";
 import { initRoles } from "./roles.js?v=20261001b";
 import { openStaffAccess } from "./staff-access.js?v=20261001b";
 import { initStaffManager } from "./admin-staff.js?v=20261001b";
+import { initAnalytics } from "./admin-analytics.js?v=20261001b";
 import { openStaffLogin } from "./staff-login.js?v=20261001b";
 import { initProductSorting } from "./sort.js?v=20261001b";
 
@@ -46,11 +47,13 @@ if (!hasServer) {
     // С Supabase заказы видны в «Заказах» (ключ GitHub не нужен); без него приходят в Telegram сообщениями
     $("adminOrdersButton").hidden = !useSupabase;
     $("adminStaffButton").hidden = role !== "director";
+    $("adminAnalyticsButton").hidden = role !== "director" || !useSupabase; // оплаты считает база
     setStaffMode(state.isAdmin);
     if (state.isAdmin && !staffToolsReady) {
       staffToolsReady = true;
       initAdminProducts(withKey);
       initStaffManager();
+      initAnalytics();
       if (useSupabase) initProductSorting(); // карточки товаров можно перетаскивать
     }
     if (state.isAdmin && useSupabase && !ordersReady) {

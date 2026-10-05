@@ -36,3 +36,17 @@
 .drag-ghost { position: fixed; z-index: 70; margin: 0; pointer-events: none; opacity: .95; transition: none !important; animation: none !important;
   box-shadow: 0 16px 36px rgba(5, 15, 25, .28); border-radius: 16px; background: var(--bg); }
 .drag-placeholder { opacity: .25; }
+
+/* Оплата заказа и «Аналитика» */
+.ord-pay { margin: 8px 0 0; }
+.ord-pay small { color: var(--muted); font-size: 12px; }
+.an-total { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--surface); }
+.an-total b, .an-card b { font-family: var(--display); font-variant-numeric: tabular-nums; font-size: 24px; }
+.an-total span, .an-card span { font-weight: 600; font-size: 13px; }
+.an-total small, .an-card small, .an-day small { color: var(--muted); font-size: 12px; }
+.an-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.an-card { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 12px; border: 1.5px solid var(--line); }
+.an-card b { font-size: 18px; }
+.an-h { margin: 18px 0 4px; font-size: 15px; }
+.an-day { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.an-day span:last-child { display: flex; flex-direction: column; align-items: flex-end; font-weight: 600; font-variant-numeric: tabular-nums; }

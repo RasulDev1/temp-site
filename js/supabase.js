@@ -118,7 +118,8 @@ export async function staffLogout() {
   forgetStaff();
 }
 
-/* В базе статусы new · awaiting_payment · paid · delivered · cancelled; в интерфейсе — new · accepted · paid · delivered · rejected */
+/* В базе статусы new · awaiting_payment · paid · delivered · cancelled · return_requested · returned;
+   в интерфейсе — new · accepted · paid · delivered · rejected · return_requested · returned */
 const STATUS = { awaiting_payment: "accepted", cancelled: "rejected" };
 const toOrder = (r) => ({
   num: r.id, status: STATUS[r.status] || r.status, date: r.created_at,
@@ -127,6 +128,12 @@ const toOrder = (r) => ({
   payDetails: r.payment_details || "", note: r.manager_note || "", message: r.manager_note || "",
   payment: r.payment_method ? { method: r.payment_method, amount: Number(r.paid_amount) || 0, at: r.paid_at, by: r.paid_by || "" } : null,
   user: { id: r.user_id, username: r.username },
+  // возврат (supabase-crm.sql): просьба покупателя, отказ менеджера и оформленный возврат
+  deliveredAt: r.delivered_at || null,
+  returnRequest: r.return_request_reason ? { reason: r.return_request_reason, at: r.return_requested_at } : null,
+  returnDeclined: r.return_declined || "",
+  refund: r.returned_at ? { reason: r.return_reason || "", at: r.returned_at, by: r.returned_by || "",
+    amount: Number(r.refund_amount) || 0, method: r.refund_method, restocked: Boolean(r.restocked) } : null,
 });
 
 /** Сводка переписки по заказам (сколько сообщений, последнее от менеджера и от покупателя) */
@@ -215,6 +222,18 @@ export const supabaseApi = {
   /** Оформленные заявки за период с менеджером, который их принял (только директор) */
   analyticsOrders: (from, to) => rpc("analytics_orders", { p_from: from, p_to: to }),
   markDelivered: (num) => setStatus(num, "paid", { status: "delivered" }),
+
+  /* ---------- CRM (supabase-crm.sql): история заказа, возвраты, закупочные цены, источник клиента, выгрузка ---------- */
+  orderHistory: (num) => rpc("order_history", { p_id: num }),
+  returnRequest: (num, reason) => rpc("order_return_request", { p_id: num, p_reason: reason }),
+  returnOrder: (num, reason, amount, method, restock) =>
+    rpc("order_return", { p_id: num, p_reason: reason, p_amount: amount, p_method: method, p_restock: Boolean(restock) }),
+  returnDecline: (num, message) => rpc("order_return_decline", { p_id: num, p_message: message }),
+  productCosts: () => rpc("product_costs_get"),
+  productCostSet: (id, cost) => rpc("product_cost_set", { p_id: id, p_cost: cost || null }),
+  customerSourceAnswer: (source) => rpc("customer_source_answer", { p_source: source }),
+  customerSourceSet: (id, source) => rpc("customer_source_set", { p_user_id: id, p_source: source || null }),
+  exportOrders: (from, to) => rpc("export_orders", { p_from: from, p_to: to }),
 
   /* ---------- Переписка по заказу ---------- */
   async chatMessages(num) {

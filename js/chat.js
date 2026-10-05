@@ -6,7 +6,7 @@ import { state } from "./state.js?v=20261001b";
 import { supabaseApi } from "./supabase.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
-const OPEN_STATUSES = ["accepted", "paid"];
+const OPEN_STATUSES = ["accepted", "paid", "return_requested"]; // пока решается возврат, тоже можно писать
 const MAX_PDF = 3 * 1024 * 1024;
 const MAX_IMAGE_SIDE = 2000;
 const SEEN_KEY = "temp_chat_seen";
@@ -66,7 +66,7 @@ function renderShell() {
         <button class="primary sm" id="chatSend">Отправить</button>
       </div>
       <p class="hint" id="chatHint"></p></div>`
-    : `<p class="adm-sub" style="margin-top:10px">Заказ ${order.status === "rejected" ? "отменён" : "ещё не принят"}, писать в чат нельзя.</p>`}`;
+    : `<p class="adm-sub" style="margin-top:10px">Заказ ${{ rejected: "отменён", new: "ещё не принят", returned: "возвращён" }[order.status] || "закрыт"}, писать в чат нельзя.</p>`}`;
   $("chatFile")?.addEventListener("change", pickFile);
 }
 

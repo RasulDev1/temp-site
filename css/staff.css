@@ -334,3 +334,24 @@
   html:not(.in-telegram).staff-mode .admin-btn.has-new, html:not(.in-telegram).staff-mode .admin-btn[aria-current].has-new { background: var(--accent); color: var(--accent-ink); }
   html:not(.in-telegram).staff-mode .admin-btn.has-new::before { background: var(--accent-ink); }
 }
+
+/* ---------- История заказа (нажатие на заголовок заказа) и возвраты ---------- */
+.staff-mode .ord-top-btn { width: 100%; border: 0; background: none; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; flex-wrap: wrap; }
+.staff-mode .ord-hist-t { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+.staff-mode .ord-top-btn:hover .ord-hist-t { color: var(--ink); }
+@media (min-width: 560px) { .staff-mode .ord-top-btn { flex-wrap: nowrap; } .staff-mode .ord-hist-t { flex-basis: auto; order: 9; margin-left: 4px; } }
+.staff-mode .ord-hist { list-style: none; margin: 10px 0 4px; padding: 10px 12px; border-radius: 8px; background: var(--hover); font-size: 13px; }
+.staff-mode .ord-hist li { position: relative; padding: 0 0 10px 16px; }
+.staff-mode .ord-hist li:last-child { padding-bottom: 0; }
+.staff-mode .ord-hist li::before { content: ""; position: absolute; left: 0; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); }
+.staff-mode .ord-hist li:not(:last-child)::after { content: ""; position: absolute; left: 3px; top: 14px; bottom: 0; width: 1px; background: var(--line); }
+.staff-mode .ord-hist time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.staff-mode .ord-hist p { margin: 1px 0 0; overflow-wrap: anywhere; }
+.staff-mode .ord-hist small { color: var(--muted); }
+.staff-mode .ord-ret { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--soft); font-size: 13.5px; overflow-wrap: anywhere; }
+.staff-mode .ord-ret p { margin: 0; }
+.staff-mode .ord-ret p + p { margin-top: 4px; }
+.staff-mode .ord-ret small { display: block; margin-top: 4px; color: var(--muted); }
+.staff-mode .st-return_requested .ord-st { background: var(--soft); color: var(--accent-text); }
+.staff-mode .ord.st-return_requested { box-shadow: inset 3px 0 0 var(--accent), var(--shadow-xs); }
+.staff-mode .an-export { width: auto; margin: 4px 0 8px; padding: 7px 14px; font-size: 13px; }

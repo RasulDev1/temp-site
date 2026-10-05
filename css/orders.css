@@ -109,3 +109,17 @@
 [data-task-new] { margin-top: 8px; }
 .staff-mode .admin-btn { cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .admin-btn.drag-ghost { cursor: grabbing; box-shadow: 0 10px 24px rgba(5,15,25,.25); }
+
+/* Возвраты: статусы, форма покупателя с правилами, ответы на «Откуда вы о нас узнали?» */
+.st-return_requested .ord-st { background: var(--accent); color: var(--accent-ink); }
+.st-returned .ord-st { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.sources { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 8px; }
+.sources .chip:disabled { opacity: .4; }
+.label small { font-weight: 400; color: var(--muted); }
+.ord-return { display: block; margin: 12px 0 0 auto; padding: 4px 0; }
+.ret-form { margin-top: 12px; }
+.ret-rules { margin: 4px 0 10px; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.ret-rules li + li { margin-top: 4px; }
+.sources .chip { margin: 0 6px 6px 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-weight: 500; }
+.sources .chip::after { display: none; }
+.sources .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }

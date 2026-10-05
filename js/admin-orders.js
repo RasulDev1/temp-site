@@ -8,23 +8,27 @@ import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 import { chatButtonHtml, openChat, onChatEvent, hasUnread } from "./chat.js?v=20261001b";
 import { openCustomer } from "./admin-customers.js?v=20261001b";
 
-const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", rejected: "Отказ" };
+const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", rejected: "Отказ",
+  return_requested: "Просят возврат", returned: "Возврат" };
 /** Вкладки списка заказов. «Новые» видны, только когда есть заказы, которые нужно принять или отклонить. */
-const STAFF_GROUPS = [["new", "Новые"], ["rejected", "Отменённые"], ["paid", "Принятые"], ["accepted", "Ожидают оплаты"], ["delivered", "Вручённые"]];
+const STAFF_GROUPS = [["new", "Новые"], ["rejected", "Отменённые"], ["paid", "Принятые"], ["accepted", "Ожидают оплаты"], ["delivered", "Вручённые"], ["returns", "Возвраты"]];
 const GROUP_EMPTY = { rejected: "Отменённых заказов нет.", paid: "Оплаченных заказов, ждущих вручения, нет.",
-  accepted: "Заказов, ожидающих оплаты, нет.", delivered: "Вручённых заказов нет." };
-const staffGroupOf = (o) => o.status;
+  accepted: "Заказов, ожидающих оплаты, нет.", delivered: "Вручённых заказов нет.", returns: "Возвратов нет." };
+const staffGroupOf = (o) => (o.status === "return_requested" || o.status === "returned" ? "returns" : o.status);
 let staffGroup = null; // выбранная вкладка; null — выбрать самую нужную
-let openForm = null; // { num, type: "accept" | "reject", text, note } или { num, type: "pay", method, amount }
+let openForm = null; // { num, type: "accept" | "reject" | "decline", text, note }, { num, type: "pay", method, amount }
+                     // или { num, type: "return", reason, method, amount, restock }
 let showArchived = false; // смотрим скрытые заказы
 let archived = [];        // скрытые заказы, когда их открыли
 let archivedCount = 0;
 let canArchive = false;   // в базе настроены скрытые заказы
+const historyOpen = new Set();  // заказы с раскрытой историей
+const histories = new Map();    // номер заказа → события (или { error })
 
 const PAY_METHODS = [["cash", "Наличные", "Отдали в руки"], ["card", "Карта", "Перевод или терминал"]];
 const PAY_METHOD = { cash: "наличными", card: "картой" };
 
-const newOrdersCount = () => state.adminOrders.filter((o) => o.status === "new").length;
+const newOrdersCount = () => state.adminOrders.filter((o) => o.status === "new" || o.status === "return_requested").length;
 const rejectionText = (order) =>
   `Здравствуйте! К сожалению, ${(order?.items || []).map((l) => l.name).join(", ") || "товара из вашего заказа"} сейчас нет в наличии, поэтому мы отменили заказ. Приносим извинения и будем рады помочь подобрать замену: просто напишите нам.`;
 
@@ -58,7 +62,7 @@ function contactsHtml({ user = {}, phone }) {
 }
 
 function decisionFormHtml(o) {
-  if (openForm?.num !== o.num || openForm.type === "pay") return o.status === "new"
+  if (openForm?.num !== o.num || (openForm.type !== "accept" && openForm.type !== "reject")) return o.status === "new"
     ? `<div class="ord-actions"><button class="primary sm" data-accept="${o.num}">Принять</button><button class="ghost" data-reject="${o.num}">Нет в наличии</button></div>` : "";
   const accept = openForm.type === "accept";
   return `<div class="ord-form">
@@ -91,23 +95,109 @@ const paymentHtml = (o) => o.payment
     o.payment.amount !== Number(o.total) ? ` <small>(сумма заказа ${formatPrice(Number(o.total) || 0)})</small>` : ""}${
     o.payment.by || o.payment.at ? `<br><small>${[escapeHtml(o.payment.by), o.payment.at && formatDate(o.payment.at)].filter(Boolean).join(", ")}</small>` : ""}</p>` : "";
 
+/* ---------- Возврат: просьба покупателя, оформление и отказ ---------- */
+const canReturn = (o) => Boolean(api.returnOrder) && ["paid", "delivered", "return_requested"].includes(o.status);
+
+function returnFormHtml(o) {
+  if (openForm.type === "decline") return `<div class="ord-form">
+    <label class="field"><span>Почему отказываете в возврате (увидит покупатель)</span>
+      <textarea id="formText" maxlength="1000" placeholder="Например: на вещи следы носки, ярлыки срезаны">${escapeHtml(openForm.text || "")}</textarea></label>
+    <p class="hint" id="formHint"></p>
+    <div class="ord-actions"><button class="primary sm danger" data-decline-save="${o.num}">Отказать в возврате</button>
+      <button class="ghost" data-cancel>Отмена</button></div></div>`;
+  return `<div class="ord-form">
+    <label class="field"><span>Причина возврата</span>
+      <textarea id="retReason" maxlength="1000" placeholder="Например: не подошёл размер">${escapeHtml(openForm.reason || "")}</textarea></label>
+    <div class="field"><span>Как вернули деньги</span>
+      <div class="ways" role="radiogroup" aria-label="Как вернули деньги">${PAY_METHODS.map(([id, title, hint]) =>
+        `<button class="way" role="radio" data-ret-method="${id}" aria-checked="${openForm.method === id}"><b>${title}</b><small>${hint}</small></button>`).join("")}</div></div>
+    <label class="field"><span>Сумма возврата, ₽</span>
+      <input id="retAmount" type="number" inputmode="decimal" min="0" step="0.01" value="${escapeHtml(String(openForm.amount))}"></label>
+    <label class="check-line"><input type="checkbox" id="retRestock" ${openForm.restock ? "checked" : ""}> Вернуть товар на склад</label>
+    <p class="adm-sub">Снимите отметку, если вещь с браком и продавать её снова нельзя.</p>
+    <p class="hint" id="formHint"></p>
+    <div class="ord-actions"><button class="primary sm" data-ret-save="${o.num}">Оформить возврат</button>
+      <button class="ghost" data-cancel>Отмена</button></div></div>`;
+}
+
+function returnHtml(o) {
+  const formOpen = openForm?.num === o.num && (openForm.type === "return" || openForm.type === "decline");
+  if (o.status === "returned" && o.refund) return `<div class="ord-ret">
+    <p><b>Возврат оформлен</b>: вернули ${formatPrice(o.refund.amount)} ${PAY_METHOD[o.refund.method] || ""}</p>
+    ${o.refund.reason ? `<p>Причина: «${escapeHtml(o.refund.reason)}»</p>` : ""}
+    <small>${o.refund.restocked ? "Товар вернулся на склад" : "Товар не возвращали на склад"} · ${[escapeHtml(o.refund.by), formatDate(o.refund.at)].filter(Boolean).join(", ")}</small></div>`;
+  const request = o.status === "return_requested" && o.returnRequest ? `<div class="ord-ret">
+    <p><b>Покупатель просит вернуть</b>: «${escapeHtml(o.returnRequest.reason)}»</p>
+    <small>${formatDate(o.returnRequest.at)}${o.deliveredAt ? ` · вручён ${formatDate(o.deliveredAt)}` : ""}</small></div>` : "";
+  const declined = o.status === "delivered" && o.returnDeclined ? `<div class="ord-ret"><p>В возврате отказано: «${escapeHtml(o.returnDeclined)}»</p></div>` : "";
+  if (!canReturn(o)) return request + declined;
+  if (formOpen) return request + declined + returnFormHtml(o);
+  return request + declined + (o.status === "return_requested"
+    ? `<div class="ord-actions"><button class="primary sm" data-return="${o.num}">Оформить возврат</button>
+        <button class="ghost" data-decline="${o.num}">Отказать</button></div>`
+    : `<button class="link ord-return" data-return="${o.num}">Оформить возврат</button>`);
+}
+
 function decisionResultHtml(o) {
   if (o.status === "new") return "";
   return `<div class="ord-res">
     <p>${o.status === "rejected" ? `Отказ: «${escapeHtml(o.message)}»`
-      : `${{ paid: "Оплачен", delivered: "Оплачен и вручён" }[o.status] || "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
+      : `${{ paid: "Оплачен", delivered: "Оплачен и вручён", return_requested: "Оплачен и вручён", returned: "Оплачен" }[o.status] || "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
     ${paymentHtml(o)}
     ${o.status === "accepted" && api.markPaid ? openForm?.num === o.num && openForm.type === "pay" ? payFormHtml(o)
       : `<div class="ord-actions"><button class="primary sm" data-pay="${o.num}">Оплатить</button></div>` : ""}
-    ${o.status === "paid" && api.markDelivered ? `<div class="ord-actions"><button class="primary sm" data-deliver="${o.num}">Вручить</button></div>` : ""}
+    ${o.status === "paid" && api.markDelivered && !(openForm?.num === o.num && openForm.type === "return") ? `<div class="ord-actions"><button class="primary sm" data-deliver="${o.num}">Вручить</button></div>` : ""}
+    ${returnHtml(o)}
     <p class="adm-sub">${useSupabase ? "Покупатель видит статус и реквизиты во вкладке «Мои заказы»."
       : o.delivered ? "Сообщение доставлено покупателю в Telegram."
       : "Сообщение не доставлено: покупатель не разрешил боту писать ему. Напишите ему сами, контакты выше."}</p>
     ${useSupabase ? chatButtonHtml(o, "staff") : ""}</div>`;
 }
 
+/* ---------- История заказа: раскрывается нажатием на заголовок заказа ---------- */
+function historyHtml(num) {
+  if (!historyOpen.has(num)) return "";
+  const events = histories.get(num);
+  if (!events) return `<div class="ord-hist"><p class="adm-sub">Загружаем историю…</p></div>`;
+  if (events.error) return `<div class="ord-hist"><p class="hint">${events.error}</p></div>`;
+  if (!events.length) return `<div class="ord-hist"><p class="adm-sub">История пока пуста.</p></div>`;
+  return `<ol class="ord-hist">${events.map((ev) => `<li><time>${formatDate(ev.at)}</time>
+    <p>${escapeHtml(ev.body)}</p>${ev.actor ? `<small>${escapeHtml(ev.actor)}</small>` : ""}</li>`).join("")}</ol>`;
+}
+
+async function loadHistory(num) {
+  try {
+    histories.set(num, (await api.orderHistory(num)) || []);
+  } catch (error) {
+    histories.set(num, { error: error.code === "no_function" ? "История не настроена: запустите supabase-crm.sql в Supabase" : errorMessage(error) });
+  }
+  const box = state.view === "adminOrders" && $(`order-${num}`)?.querySelector(".ord-hist");
+  if (box) box.outerHTML = historyHtml(num);
+}
+
+function toggleHistory(num) {
+  haptic();
+  const top = $(`order-${num}`)?.querySelector("[data-history]");
+  if (historyOpen.has(num)) {
+    historyOpen.delete(num);
+    $(`order-${num}`)?.querySelector(".ord-hist")?.remove();
+  } else {
+    historyOpen.add(num);
+    top?.insertAdjacentHTML("afterend", historyHtml(num));
+    loadHistory(num); // каждый раз свежая: события могли добавиться
+  }
+  if (top) {
+    top.setAttribute("aria-expanded", historyOpen.has(num));
+    top.querySelector(".ord-hist-t").textContent = `История ${historyOpen.has(num) ? "▴" : "▾"}`;
+  }
+}
+
+const orderTopHtml = (o) => api.orderHistory
+  ? `<button class="ord-top ord-top-btn" data-history="${o.num}" aria-expanded="${historyOpen.has(o.num)}"><b>№${o.num}</b><span class="ord-st">${STATUS[o.status]}</span><time>${formatDate(o.date)}</time><span class="ord-hist-t">История ${historyOpen.has(o.num) ? "▴" : "▾"}</span></button>`
+  : `<div class="ord-top"><b>№${o.num}</b><span class="ord-st">${STATUS[o.status]}</span><time>${formatDate(o.date)}</time></div>`;
+
 const orderHtml = (o) => `<article class="ord st-${o.status}" id="order-${o.num}">
-  <div class="ord-top"><b>№${o.num}</b><span class="ord-st">${STATUS[o.status]}</span><time>${formatDate(o.date)}</time></div>
+  ${orderTopHtml(o)}${historyHtml(o.num)}
   <p class="ord-who">${useSupabase && o.user?.id ? `<button class="link ord-client" data-client="${Number(o.user.id)}" data-client-order="${o.num}">${escapeHtml(o.name)} ›</button>` : escapeHtml(o.name)}</p>
   ${contactsHtml(o)}
   <p class="ord-way">${escapeHtml(o.way)}${o.addr ? ": " + escapeHtml(o.addr) : ""}</p>
@@ -141,13 +231,14 @@ function renderOrders() {
   }
   const n = newOrdersCount();
   const counts = Object.fromEntries(STAFF_GROUPS.map(([id]) => [id, state.adminOrders.filter((o) => staffGroupOf(o) === id).length]));
-  const groups = STAFF_GROUPS.filter(([id]) => id !== "new" || counts.new);
-  if (!groups.some(([id]) => id === staffGroup)) // по умолчанию: новые, иначе первая непустая вкладка
-    staffGroup = counts.new ? "new" : groups.find(([id]) => counts[id])?.[0] || "paid";
+  const groups = STAFF_GROUPS.filter(([id]) => (id !== "new" && id !== "returns") || counts[id]);
+  if (!groups.some(([id]) => id === staffGroup)) // по умолчанию: новые, затем просьбы о возврате, иначе первая непустая вкладка
+    staffGroup = counts.new ? "new" : state.adminOrders.some((o) => o.status === "return_requested") ? "returns"
+      : groups.find(([id]) => counts[id])?.[0] || "paid";
   const list = state.adminOrders.filter((o) => staffGroupOf(o) === staffGroup);
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Заказы</h2>
     <p class="adm-sub">${state.adminOrders.length
-      ? `${n ? `${n} ${pluralize(n, "новый заказ ждёт", "новых заказа ждут", "новых заказов ждут")} решения.` : "Новых заказов нет."} Принятый заказ — покупатель получает реквизиты для оплаты, отказ — сообщение, товар возвращается на склад.`
+      ? `${n ? `${n} ${pluralize(n, "заказ ждёт", "заказа ждут", "заказов ждут")} решения.` : "Новых заказов нет."} Принятый заказ — покупатель получает реквизиты для оплаты, отказ — сообщение, товар возвращается на склад.`
       : "Список пуст. Новые заказы появятся здесь сами."}</p>
     ${listToolsHtml()}
     <div class="order-groups" role="tablist">${groups.map(([id, title]) =>
@@ -185,6 +276,10 @@ async function onOrdersClick(e) {
   const group = t.closest("[data-staff-group]")?.dataset.staffGroup;
   if (group) { if (group !== staffGroup) { haptic(); staffGroup = group; renderOrders(); } return; }
   if (t.dataset.deliver) return markDelivered(t);
+  const historyButton = t.closest("[data-history]");
+  if (historyButton) return toggleHistory(Number(historyButton.dataset.history));
+  if (t.dataset.retSave) return saveReturn(t);
+  if (t.dataset.declineSave) return declineReturn(t);
   if (t.dataset.accept) openForm = { num: Number(t.dataset.accept), type: "accept", text: storage.get("temp_last_pay", "") };
   else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(state.adminOrders.find((o) => o.num === Number(t.dataset.reject))) };
   else if (t.hasAttribute("data-cancel")) openForm = null;
@@ -192,9 +287,15 @@ async function onOrdersClick(e) {
   else if (t.dataset.pay) openForm = { num: Number(t.dataset.pay), type: "pay", method: null, amount: null };
   else if (t.closest("[data-pay-method]")) { openForm.method = t.closest("[data-pay-method]").dataset.payMethod; openForm.amount = $("payAmount").value; haptic(); }
   else if (t.dataset.paySave) return markPaid(t);
+  else if (t.dataset.return) {
+    const o = state.adminOrders.find((x) => x.num === Number(t.dataset.return));
+    openForm = { num: o.num, type: "return", reason: o.returnRequest?.reason || "", method: o.payment?.method || null,
+      amount: o.payment?.amount ?? o.total, restock: !/^брак/i.test(o.returnRequest?.reason || "") };
+  } else if (t.dataset.decline) openForm = { num: Number(t.dataset.decline), type: "decline", text: "" };
+  else if (t.closest("[data-ret-method]")) { keepReturnDraft(); openForm.method = t.closest("[data-ret-method]").dataset.retMethod; haptic(); }
   else return;
   renderOrders();
-  (openForm?.type === "pay" ? null : $("formText"))?.focus();
+  (openForm?.type === "pay" || openForm?.type === "return" ? null : $("formText"))?.focus();
 }
 
 async function sendDecision(button) {
@@ -302,6 +403,7 @@ async function showOrder(num) {
   const order = state.adminOrders.find((o) => o.num === num);
   if (order) staffGroup = staffGroupOf(order);
   renderOrders();
+  if (historyOpen.has(num)) loadHistory(num);
   const card = $(`order-${num}`);
   if (!card) return;
   card.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -360,6 +462,69 @@ async function markPaid(button) {
   await showOrder(Number(button.dataset.paySave));
 }
 
+/** Поля формы возврата не теряются при выборе способа */
+function keepReturnDraft() {
+  openForm.reason = $("retReason").value;
+  openForm.amount = $("retAmount").value;
+  openForm.restock = $("retRestock").checked;
+}
+
+function returnError(error) {
+  if (error.code === "conflict") return "Заказ уже изменён другим сотрудником";
+  if (error.code === "no_function") return "Возвраты не настроены: запустите supabase-crm.sql в Supabase";
+  if (error.code === "bad_amount") return "Сумма возврата не может быть больше оплаченной";
+  if (error.code === "forbidden") return "Нет прав: войдите как сотрудник по ссылке …/crm.html";
+  return errorMessage(error);
+}
+
+/** «Оформить возврат»: причина, как и сколько вернули, вернуть ли товар на склад */
+async function saveReturn(button) {
+  keepReturnDraft();
+  const amount = Number(String(openForm.amount).replace(",", "."));
+  const problem = openForm.reason.trim().length < 3 ? "Напишите причину возврата"
+    : !openForm.method ? "Выберите, как вернули деньги: наличными или на карту"
+    : !(amount >= 0) || openForm.amount === "" ? "Впишите сумму возврата" : "";
+  if (problem) { $("formHint").textContent = problem; return haptic("medium"); }
+  button.disabled = true;
+  button.textContent = "Сохраняем…";
+  const num = Number(button.dataset.retSave);
+  try {
+    await api.returnOrder(num, openForm.reason.trim(), amount, openForm.method, openForm.restock);
+    haptic("success");
+    toast(`Возврат по заказу №${num} оформлен`);
+    if (openForm.restock) refreshCatalog(); // товар вернулся на склад
+    openForm = null;
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Оформить возврат";
+    $("formHint").textContent = returnError(error);
+    return haptic("medium");
+  }
+  await showOrder(num);
+}
+
+/** Отказ в возврате: заказ возвращается во «Вручённые», покупатель видит причину */
+async function declineReturn(button) {
+  const text = $("formText").value.trim();
+  openForm.text = text;
+  if (text.length < 3) { $("formHint").textContent = "Напишите покупателю, почему возврат невозможен"; return haptic("medium"); }
+  button.disabled = true;
+  button.textContent = "Сохраняем…";
+  const num = Number(button.dataset.declineSave);
+  try {
+    await api.returnDecline(num, text);
+    haptic("success");
+    toast("Покупатель увидит отказ в «Моих заказах»");
+    openForm = null;
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Отказать в возврате";
+    $("formHint").textContent = returnError(error);
+    return haptic("medium");
+  }
+  await showOrder(num);
+}
+
 export function initAdminOrders() {
   $("adminOrdersButton").onclick = () => { haptic(); openAdminOrders(); };
   loadAdminOrders();
@@ -369,6 +534,7 @@ export function initAdminOrders() {
   if (useSupabase) watchOrders("staff", async (payload) => {
     await loadAdminOrders();
     if (onChatEvent(payload, "staff")) return;
+    if (historyOpen.has(Number(payload.id))) loadHistory(Number(payload.id));
     if (payload.op === "insert") { haptic("success"); toast(`Новый заказ №${payload.id}`); }
   }, loadAdminOrders);
   on("chatseen", updateOrdersButton);

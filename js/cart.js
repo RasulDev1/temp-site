@@ -51,6 +51,10 @@ function changeQuantity(index, delta) {
 
 /* ---------- Оформление ---------- */
 let deliveryMethod = "cdek";
+/** «Откуда вы о нас узнали?» — спрашиваем при первом заказе с этого устройства */
+const SOURCES = ["Instagram", "ВКонтакте", "Telegram", "Авито", "Посоветовали друзья", "Увидел магазин", "Другое"];
+let source = "";
+const askSource = () => useSupabase && Boolean(api.customerSourceAnswer) && !state.myOrders.length && !storage.get("temp_source_sent", false);
 const addressDrafts = {}; // введённый адрес не теряется при переключении способа доставки
 
 export function openCheckout() {
@@ -65,6 +69,8 @@ export function openCheckout() {
     <div class="ways" role="radiogroup" aria-label="Способ доставки">${DELIVERY_METHODS.map((m) =>
       `<button class="way" role="radio" data-delivery="${m.id}" aria-checked="${m.id === deliveryMethod}"><b>${m.title}</b><small>${m.hint}</small></button>`).join("")}</div>
     <div id="addressField"></div>
+    ${askSource() ? `<p class="label">Откуда вы о нас узнали? <small>необязательно</small></p>
+    <div class="sources">${SOURCES.map((s) => `<button class="chip" data-source="${s}" aria-pressed="${s === source}">${s}</button>`).join("")}</div>` : ""}
     <p class="hint" id="hint"></p>
     <div class="total"><span>К оплате</span><b>${formatPrice(cartTotal())}</b></div>
     <button class="primary browser-only" id="placeOrder">Подтвердить заказ</button>`;
@@ -78,6 +84,12 @@ export function openCheckout() {
       $("hint").textContent = "";
       renderAddressField();
       $("address")?.focus({ preventScroll: true });
+    }
+    const picked = e.target.closest("[data-source]")?.dataset.source;
+    if (picked) {
+      haptic();
+      source = source === picked ? "" : picked;
+      sheetBody.querySelectorAll("[data-source]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.source === source));
     }
     if (e.target.id === "placeOrder") placeOrder();
   };
@@ -130,6 +142,10 @@ export async function placeOrder() {
     if (!hasOrdersBackend) return sendOrderToManager(order);
     if (hasServer) await askWritePermission(); // бот пришлёт реквизиты в чат; с Supabase они придут в «Мои заказы»
     const { num } = await api.placeOrder(order);
+    if (source && askSource()) {
+      storage.set("temp_source_sent", true);
+      api.customerSourceAnswer(source).catch(() => {}); // ответ не обязателен: заказ уже оформлен
+    }
     rememberOrder({ ...order, num, date: new Date().toISOString(), status: "new" });
     state.cart = [];
     saveCart();
@@ -197,7 +213,8 @@ function showOrderPlaced(items, note = "Когда менеджер провер
 }
 
 /* ---------- Мои заказы ---------- */
-const ORDER_STATUS = { new: "Проверяем наличие", accepted: "Ждёт оплаты", paid: "Оплачен, готовим к отправке", delivered: "Вручён", rejected: "Отменён" };
+const ORDER_STATUS = { new: "Проверяем наличие", accepted: "Ждёт оплаты", paid: "Оплачен, готовим к отправке", delivered: "Вручён", rejected: "Отменён",
+  return_requested: "Возврат на рассмотрении", returned: "Возврат оформлен" };
 export const paymentDetails = (order) => order.payDetails || order.payUrl || "";
 const isPaymentLink = (text) => /^https:\/\/\S+$/.test(text.trim());
 
@@ -218,6 +235,72 @@ export const orderItemsHtml = (order) =>
   `<ul class="ord-items">${(order.items || []).map((l) => `<li><span class="thumb">${orderLinePhoto(l)}</span>
     <span>${escapeHtml(l.name)}, ${escapeHtml(l.colorName)}, размер ${escapeHtml(l.size)} — ${Number(l.qty)} шт.</span></li>`).join("")}</ul>`;
 
+/* ---------- Возврат товара ---------- */
+const RETURN_DAYS = 14, DEFECT_DAYS = 180;
+const RETURN_REASONS = ["Не подошёл размер", "Не подошёл фасон или цвет", "Товар не соответствует описанию", "Привезли не тот товар", "Брак или повреждение", "Другое"];
+const RETURN_RULES = `<ul class="ret-rules">
+  <li>Вернуть вещь надлежащего качества можно в течение ${RETURN_DAYS} дней после получения, не считая дня покупки.</li>
+  <li>Вещь не была в носке, сохранены товарный вид, ярлыки и бирки.</li>
+  <li>Бельё и носки надлежащего качества обмену и возврату не подлежат.</li>
+  <li>Вещь с браком можно вернуть в течение 6 месяцев: пришлите фото дефекта в чат с менеджером.</li>
+  <li>Деньги вернём тем же способом, которым вы платили, в течение 10 дней после того, как получим вещь.</li>
+  <li>Если вещь без брака, обратную доставку оплачивает покупатель.</li></ul>`;
+const PAY_WAY = { cash: "наличными", card: "на карту" };
+let returnDraft = null; // { num, reason, comment } — открытая форма возврата
+
+/** Сколько дней прошло после получения заказа */
+const daysSinceDelivery = (o) => (Date.now() - new Date(o.deliveredAt || o.payment?.at || o.date)) / 864e5;
+const canRequestReturn = (o) => o.status === "delivered" && Boolean(api.returnRequest) && !o.returnDeclined && daysSinceDelivery(o) <= DEFECT_DAYS;
+const onlyDefect = (o) => daysSinceDelivery(o) > RETURN_DAYS + 1;
+
+function returnFormHtml(o) {
+  const late = onlyDefect(o);
+  return `<div class="ord-form ret-form">
+    <p class="label">Причина возврата</p>
+    ${late ? `<p class="adm-sub">Прошло больше ${RETURN_DAYS} дней после получения: вернуть можно только вещь с браком.</p>` : ""}
+    <div class="sources">${RETURN_REASONS.map((r) => {
+      const off = late && !/^Брак/.test(r);
+      return `<button class="chip" data-return-reason="${r}" aria-pressed="${returnDraft.reason === r}" ${off ? "disabled" : ""}>${r}</button>`;
+    }).join("")}</div>
+    <label class="field"><span>Подробнее</span><textarea id="returnComment" maxlength="600" placeholder="Например: маломерит, нужен размер больше">${escapeHtml(returnDraft.comment)}</textarea></label>
+    <p class="label">Правила возврата</p>${RETURN_RULES}
+    <p class="hint" id="returnHint"></p>
+    <div class="ord-actions"><button class="primary sm" data-return-send="${o.num}">Отправить заявку на возврат</button>
+      <button class="ghost" data-return-cancel>Отмена</button></div></div>`;
+}
+
+function returnInfoHtml(o) {
+  if (o.status === "return_requested") return `<p class="ord-note">Вы попросили вернуть: «${escapeHtml(o.returnRequest?.reason || "")}». Менеджер рассмотрит заявку и напишет вам. Если нужно, пришлите фото в чат.</p>`;
+  if (o.status === "returned" && o.refund) return `<p class="ord-note">Возврат оформлен: вернём ${formatPrice(o.refund.amount)}${PAY_WAY[o.refund.method] ? " " + PAY_WAY[o.refund.method] : ""}.</p>`;
+  if (o.status !== "delivered") return "";
+  if (o.returnDeclined) return `<p class="ord-note">В возврате отказано: ${escapeHtml(o.returnDeclined)}</p>`;
+  if (!canRequestReturn(o)) return "";
+  return returnDraft?.num === o.num ? returnFormHtml(o) : `<button class="link ord-return" data-return-open="${o.num}">Вернуть товар</button>`;
+}
+
+async function sendReturn(button) {
+  returnDraft.comment = $("returnComment").value.trim();
+  if (!returnDraft.reason) { $("returnHint").textContent = "Выберите причину возврата"; return haptic("medium"); }
+  if (returnDraft.reason === "Другое" && returnDraft.comment.length < 3) { $("returnHint").textContent = "Опишите причину"; return haptic("medium"); }
+  button.disabled = true;
+  button.textContent = "Отправляем…";
+  try {
+    await api.returnRequest(returnDraft.num, [returnDraft.reason, returnDraft.comment].filter(Boolean).join(": "));
+    haptic("success");
+    toast("Заявка на возврат отправлена");
+    returnDraft = null;
+    ordersGroup = "returns";
+    await renderMyOrders(true);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Отправить заявку на возврат";
+    $("returnHint").textContent = { return_expired: "Срок возврата прошёл. Напишите менеджеру, если вещь с браком.",
+      return_declined: "По этому заказу уже отказано в возврате.", conflict: "Статус заказа изменился. Обновите страницу." }[error.code]
+      || "Не удалось отправить. Проверьте соединение и повторите.";
+    haptic("medium");
+  }
+}
+
 function myOrderHtml(o) {
   const status = o.status || "new", details = paymentDetails(o), total = formatPrice(Number(o.total) || 0);
   return `<article class="ord st-${status}">
@@ -230,6 +313,7 @@ function myOrderHtml(o) {
       <button class="ghost copy" data-copy="${o.num}">Скопировать реквизиты</button></div>
       ${isPaymentLink(details) ? `<a class="primary pay" href="${escapeHtml(details)}" data-pay>Перейти к оплате</a>` : ""}` : ""}
     ${status === "rejected" && o.message ? `<p class="ord-note">${escapeHtml(o.message)}</p>` : ""}
+    ${returnInfoHtml(o)}
     ${useSupabase && status === "accepted" ? `<p class="adm-sub" style="margin-top:10px">Оплатили? Отправьте чек менеджеру в чат.</p>` : ""}
     ${useSupabase ? chatButtonHtml(o, "customer") : ""}
     ${status === "new" ? `<p class="adm-sub">${hasOrdersBackend ? "Проверяем наличие. Как только всё подтвердим, здесь появятся реквизиты для оплаты." : "Статус заказа уточняйте у менеджера в Telegram."}</p>` : ""}
@@ -237,8 +321,9 @@ function myOrderHtml(o) {
 }
 
 /** Заказы покупателя по группам: принятые (в том числе оплаченные), вручённые, отменённые и ещё не подтверждённые */
-const ORDER_GROUPS = [["accepted", "Принятые"], ["delivered", "Вручённые"], ["rejected", "Отменённые"], ["new", "Ждут подтверждения"]];
+const ORDER_GROUPS = [["accepted", "Принятые"], ["delivered", "Вручённые"], ["returns", "Возвраты"], ["rejected", "Отменённые"], ["new", "Ждут подтверждения"]];
 const groupOf = (o) => (o.status === "rejected" || o.status === "delivered" ? o.status
+  : o.status === "return_requested" || o.status === "returned" ? "returns"
   : o.status === "accepted" || o.status === "paid" ? "accepted" : "new");
 let ordersGroup = null; // выбранная группа; null — первая непустая
 
@@ -273,6 +358,7 @@ export function initCart() {
     if (e.target.id === "toCheckout") openCheckout();
     if (e.target.id === "goShopping") setTab("shop");
   };
+  $("ordersPage").oninput = (e) => { if (e.target.id === "returnComment" && returnDraft) returnDraft.comment = e.target.value; };
   $("ordersPage").onclick = (e) => {
     if (e.target.id === "goShopping") setTab("shop");
     const group = e.target.closest("[data-orders-group]")?.dataset.ordersGroup;
@@ -282,6 +368,18 @@ export function initCart() {
     const chatButton = e.target.closest("[data-chat]");
     const chatOrder = chatButton && state.myOrders.find((o) => o.num === Number(chatButton.dataset.chat));
     if (chatOrder) { haptic(); openChat(chatOrder, "customer"); }
+    const openReturn = e.target.closest("[data-return-open]");
+    if (openReturn) { haptic(); returnDraft = { num: Number(openReturn.dataset.returnOpen), reason: "", comment: "" }; return renderMyOrders(); }
+    const reason = e.target.closest("[data-return-reason]:not(:disabled)");
+    if (reason) {
+      haptic();
+      returnDraft.comment = $("returnComment").value;
+      returnDraft.reason = reason.dataset.returnReason;
+      return renderMyOrders();
+    }
+    if (e.target.closest("[data-return-cancel]")) { returnDraft = null; return renderMyOrders(); }
+    const send = e.target.closest("[data-return-send]");
+    if (send) return sendReturn(send);
     const copy = e.target.closest("[data-copy]");
     if (copy) copyToClipboard(paymentDetails(state.myOrders.find((o) => o.num === Number(copy.dataset.copy))), copy);
   };

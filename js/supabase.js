@@ -125,6 +125,7 @@ const toOrder = (r) => ({
   items: Array.isArray(r.items) ? r.items : [], total: Number(r.total) || 0,
   name: r.customer_name, phone: r.phone, way: r.delivery_way || "", addr: r.address || "",
   payDetails: r.payment_details || "", note: r.manager_note || "", message: r.manager_note || "",
+  payment: r.payment_method ? { method: r.payment_method, amount: Number(r.paid_amount) || 0, at: r.paid_at, by: r.paid_by || "" } : null,
   user: { id: r.user_id, username: r.username },
 });
 
@@ -194,7 +195,17 @@ export const supabaseApi = {
   },
   acceptOrder: (num, payDetails, note) => setStatus(num, "new", { status: "awaiting_payment", payment_details: payDetails, manager_note: note || null }),
   rejectOrder: (num, message) => setStatus(num, "new", { status: "cancelled", manager_note: message }),
-  markPaid: (num) => setStatus(num, "awaiting_payment", { status: "paid" }),
+  /** «Оплатить»: способ (cash · card) и полученная сумма — для аналитики оплат (supabase-payments.sql) */
+  async markPaid(num, method, amount) {
+    try {
+      return { order: toOrder(await rpc("order_mark_paid", { p_id: num, p_method: method, p_amount: amount })) };
+    } catch (error) {
+      if (error.code === "no_function") throw { code: "no_payments" };
+      throw error;
+    }
+  },
+  /** Сводка оплат за период (только директор); from / to — "ГГГГ-ММ-ДД" или null */
+  paymentsStats: (from, to) => rpc("payments_stats", { p_from: from, p_to: to }),
   markDelivered: (num) => setStatus(num, "paid", { status: "delivered" }),
 
   /* ---------- Переписка по заказу ---------- */

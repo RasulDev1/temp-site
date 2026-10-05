@@ -14,11 +14,14 @@ const GROUP_EMPTY = { rejected: "Отменённых заказов нет.", p
   accepted: "Заказов, ожидающих оплаты, нет.", delivered: "Вручённых заказов нет." };
 const staffGroupOf = (o) => o.status;
 let staffGroup = null; // выбранная вкладка; null — выбрать самую нужную
-let openForm = null; // { num, type: "accept" | "reject", text, note }
+let openForm = null; // { num, type: "accept" | "reject", text, note } или { num, type: "pay", method, amount }
 let showArchived = false; // смотрим скрытые заказы
 let archived = [];        // скрытые заказы, когда их открыли
 let archivedCount = 0;
 let canArchive = false;   // в базе настроены скрытые заказы
+
+const PAY_METHODS = [["cash", "Наличные", "Отдали в руки"], ["card", "Карта", "Перевод или терминал"]];
+const PAY_METHOD = { cash: "наличными", card: "картой" };
 
 const newOrdersCount = () => state.adminOrders.filter((o) => o.status === "new").length;
 const rejectionText = (order) =>
@@ -54,7 +57,7 @@ function contactsHtml({ user = {}, phone }) {
 }
 
 function decisionFormHtml(o) {
-  if (openForm?.num !== o.num) return o.status === "new"
+  if (openForm?.num !== o.num || openForm.type === "pay") return o.status === "new"
     ? `<div class="ord-actions"><button class="primary sm" data-accept="${o.num}">Принять</button><button class="ghost" data-reject="${o.num}">Нет в наличии</button></div>` : "";
   const accept = openForm.type === "accept";
   return `<div class="ord-form">
@@ -68,12 +71,33 @@ function decisionFormHtml(o) {
       <button class="ghost" data-cancel>Отмена</button></div></div>`;
 }
 
+/** «Оплатить»: способ оплаты и сумма (по умолчанию — сумма заказа) */
+function payFormHtml(o) {
+  return `<div class="ord-form">
+    <div class="field"><span>Способ оплаты</span>
+      <div class="ways" role="radiogroup" aria-label="Способ оплаты">${PAY_METHODS.map(([id, title, hint]) =>
+        `<button class="way" role="radio" data-pay-method="${id}" aria-checked="${openForm.method === id}"><b>${title}</b><small>${hint}</small></button>`).join("")}</div></div>
+    <label class="field"><span>Сумма, ₽</span>
+      <input id="payAmount" type="number" inputmode="decimal" min="1" step="0.01" value="${escapeHtml(String(openForm.amount ?? o.total))}"></label>
+    <p class="hint" id="formHint"></p>
+    <div class="ord-actions"><button class="primary sm" data-pay-save="${o.num}">Оплачено</button>
+      <button class="ghost" data-cancel>Отмена</button></div></div>`;
+}
+
+/** Как оплатили: «Оплачено картой · 5 000 ₽ · Иванов, 05.10 14:30» */
+const paymentHtml = (o) => o.payment
+  ? `<p class="ord-pay">Оплачено ${PAY_METHOD[o.payment.method] || ""} · <b>${formatPrice(o.payment.amount)}</b>${
+    o.payment.amount !== Number(o.total) ? ` <small>(сумма заказа ${formatPrice(Number(o.total) || 0)})</small>` : ""}${
+    o.payment.by || o.payment.at ? `<br><small>${[escapeHtml(o.payment.by), o.payment.at && formatDate(o.payment.at)].filter(Boolean).join(", ")}</small>` : ""}</p>` : "";
+
 function decisionResultHtml(o) {
   if (o.status === "new") return "";
   return `<div class="ord-res">
     <p>${o.status === "rejected" ? `Отказ: «${escapeHtml(o.message)}»`
       : `${{ paid: "Оплачен", delivered: "Оплачен и вручён" }[o.status] || "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
-    ${o.status === "accepted" && api.markPaid ? `<div class="ord-actions"><button class="primary sm" data-paid="${o.num}">Оплата получена</button></div>` : ""}
+    ${paymentHtml(o)}
+    ${o.status === "accepted" && api.markPaid ? openForm?.num === o.num && openForm.type === "pay" ? payFormHtml(o)
+      : `<div class="ord-actions"><button class="primary sm" data-pay="${o.num}">Оплатить</button></div>` : ""}
     ${o.status === "paid" && api.markDelivered ? `<div class="ord-actions"><button class="primary sm" data-deliver="${o.num}">Вручить</button></div>` : ""}
     <p class="adm-sub">${useSupabase ? "Покупатель видит статус и реквизиты во вкладке «Мои заказы»."
       : o.delivered ? "Сообщение доставлено покупателю в Telegram."
@@ -163,10 +187,12 @@ async function onOrdersClick(e) {
   else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(state.adminOrders.find((o) => o.num === Number(t.dataset.reject))) };
   else if (t.hasAttribute("data-cancel")) openForm = null;
   else if (t.dataset.send) return sendDecision(t);
-  else if (t.dataset.paid) return markPaid(t);
+  else if (t.dataset.pay) openForm = { num: Number(t.dataset.pay), type: "pay", method: null, amount: null };
+  else if (t.closest("[data-pay-method]")) { openForm.method = t.closest("[data-pay-method]").dataset.payMethod; openForm.amount = $("payAmount").value; haptic(); }
+  else if (t.dataset.paySave) return markPaid(t);
   else return;
   renderOrders();
-  $("formText")?.focus();
+  (openForm?.type === "pay" ? null : $("formText"))?.focus();
 }
 
 async function sendDecision(button) {
@@ -291,15 +317,32 @@ async function markDelivered(button) {
   renderOrders();
 }
 
+/** Почему не получилось отметить оплату */
+function payError(error) {
+  if (error.code === "conflict") return "Заказ уже изменён другим сотрудником";
+  if (error.code === "no_payments") return "Оплаты не настроены: запустите supabase-payments.sql в Supabase";
+  if (error.code === "forbidden") return "Нет прав: войдите как сотрудник по ссылке …/staff.html";
+  return errorMessage(error);
+}
+
+/** «Оплачено»: заказ переходит в «Принятые», способ и сумма сохраняются для аналитики */
 async function markPaid(button) {
+  const amount = Number(String($("payAmount").value).replace(",", "."));
+  openForm.amount = $("payAmount").value;
+  const problem = !openForm.method ? "Выберите способ оплаты: наличные или карта" : !(amount > 0) ? "Впишите полученную сумму" : "";
+  if (problem) { $("formHint").textContent = problem; return haptic("medium"); }
   button.disabled = true;
   button.textContent = "Сохраняем…";
   try {
-    await api.markPaid(Number(button.dataset.paid));
+    await api.markPaid(Number(button.dataset.paySave), openForm.method, amount);
     haptic("success");
-    toast("Отмечено: оплачен");
+    toast(`Оплачено ${PAY_METHOD[openForm.method]}: ${formatPrice(amount)}`);
+    openForm = null;
   } catch (error) {
-    toast(errorMessage(error));
+    button.disabled = false;
+    button.textContent = "Оплачено";
+    $("formHint").textContent = payError(error);
+    return haptic("medium");
   }
   await loadAdminOrders();
   renderOrders();

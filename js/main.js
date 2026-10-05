@@ -15,6 +15,7 @@ import { initStaffManager } from "./admin-staff.js?v=20261001b";
 import { initAnalytics } from "./admin-analytics.js?v=20261001b";
 import { initCustomers } from "./admin-customers.js?v=20261001b";
 import { initTasks, openTasks } from "./admin-tasks.js?v=20261001b";
+import { initAdminBarSorting } from "./admin-bar-sort.js?v=20261001b";
 import { openStaffLogin } from "./staff-login.js?v=20261001b";
 import { initProductSorting } from "./sort.js?v=20261001b";
 
@@ -55,6 +56,7 @@ if (!hasServer) {
     setStaffMode(state.isAdmin);
     if (state.isAdmin && !staffToolsReady) {
       staffToolsReady = true;
+      initAdminBarSorting(); // кнопки сотрудника можно переставлять
       initAdminProducts(withKey);
       initStaffManager();
       initAnalytics();

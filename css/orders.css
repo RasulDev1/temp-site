@@ -107,3 +107,5 @@
 .tk-tg { margin-top: 18px; }
 .tk-tg .ghost { width: 100%; }
 [data-task-new] { margin-top: 8px; }
+.staff-mode .admin-btn { cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.admin-btn.drag-ghost { cursor: grabbing; box-shadow: 0 10px 24px rgba(5,15,25,.25); }

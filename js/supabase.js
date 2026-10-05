@@ -236,6 +236,13 @@ export const supabaseApi = {
       || (error.code === "23514" || error.code === "54000" ? "too_large" : "server"), raw: error };
   },
 
+  /* ---------- Карточки клиентов (supabase-customers.sql) ---------- */
+  customersList: () => rpc("customers_list"),
+  customerCard: (id) => rpc("customer_card", { p_user_id: id }),
+  customerNoteAdd: (id, body) => rpc("customer_note_add", { p_user_id: id, p_body: body }),
+  customerNoteDelete: (noteId) => rpc("customer_note_delete", { p_id: noteId }),
+  customerTagsSet: (id, tags) => rpc("customer_tags_set", { p_user_id: id, p_tags: tags }),
+
   /* ---------- «Сотрудники»: аккаунты с логином и паролем (только директор) ---------- */
   staffList: () => rpc("staff_list"),
   staffSave: (id, name, login, password) => rpc("staff_save", { p_id: id || null, p_name: name, p_login: login, p_password: password || null }),

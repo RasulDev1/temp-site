@@ -54,9 +54,12 @@ let deliveryMethod = "cdek";
 const addressDrafts = {}; // введённый адрес не теряется при переключении способа доставки
 
 export function openCheckout() {
-  const name = [telegramUser?.first_name, telegramUser?.last_name].filter(Boolean).join(" ");
+  // ФИО с прошлого заказа на этом устройстве, иначе — имя и фамилия из Telegram
+  const saved = storage.get("temp_customer_fio", null) || { last: telegramUser?.last_name || "", first: telegramUser?.first_name || "", middle: "" };
   sheetBody.innerHTML = `<div class="grab"></div><h2 class="p-name">Доставка</h2>
-    <label class="field"><span>Имя</span><input id="customerName" autocomplete="name" value="${escapeHtml(name)}"></label>
+    <label class="field"><span>Фамилия</span><input id="customerLast" autocomplete="family-name" value="${escapeHtml(saved.last || "")}"></label>
+    <label class="field"><span>Имя</span><input id="customerFirst" autocomplete="given-name" value="${escapeHtml(saved.first || "")}"></label>
+    <label class="field"><span>Отчество, если есть</span><input id="customerMiddle" autocomplete="additional-name" value="${escapeHtml(saved.middle || "")}"></label>
     <label class="field"><span>Телефон</span><input id="customerPhone" type="tel" autocomplete="tel" placeholder="+7 900 000-00-00"></label>
     <p class="label">Способ доставки</p>
     <div class="ways" role="radiogroup" aria-label="Способ доставки">${DELIVERY_METHODS.map((m) =>
@@ -107,11 +110,14 @@ let placingOrder = false;
 export async function placeOrder() {
   if (placingOrder) return;
   const method = DELIVERY_METHODS.find((m) => m.id === deliveryMethod);
-  const name = $("customerName").value.trim(), phone = $("customerPhone").value.trim(), addr = $("address")?.value.trim() || "";
-  if (!name || !phone || (method.addressLabel && !addr)) {
-    $("hint").textContent = method.addressLabel ? `Заполните имя, телефон и поле «${method.addressLabel}»` : "Заполните имя и телефон";
+  const fio = { last: $("customerLast").value.trim(), first: $("customerFirst").value.trim(), middle: $("customerMiddle").value.trim() };
+  const name = [fio.last, fio.first, fio.middle].filter(Boolean).join(" ");
+  const phone = $("customerPhone").value.trim(), addr = $("address")?.value.trim() || "";
+  if (!fio.last || !fio.first || !phone || (method.addressLabel && !addr)) {
+    $("hint").textContent = method.addressLabel ? `Заполните фамилию, имя, телефон и поле «${method.addressLabel}»` : "Заполните фамилию, имя и телефон";
     return haptic("medium");
   }
+  storage.set("temp_customer_fio", fio); // в следующий раз подставим
   const items = state.cart.map((line) => {
     const p = findProduct(line.id);
     return { ...line, name: p.name, colorName: colorName(p, line.color), price: p.price, photo: photoLink(p, line.color) };

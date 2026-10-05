@@ -3,12 +3,14 @@
    Всё здесь действует только в режиме сотрудника (html.staff-mode) — у покупателей ничего не меняется.
    ===================================================================== */
 
-/* ---------- Палитра: нейтральные серые, один акцент (индиго), шрифт без «Unbounded» ---------- */
+/* ---------- Палитра: фирменные тёмно-синий и жёлтый, нейтральные серые; шрифт без «Unbounded» ---------- */
 :root.staff-mode {
-  --bg: #F7F8FA; --surface: #FFFFFF; --ink: #0F172A; --muted: #64748B; --line: #E5E7EB;
+  --bg: #F5F7FA; --surface: #FFFFFF; --ink: #0E2A47; --muted: #627489; --line: #E2E8EF;
+  /* фирменный тёмно-синий: шапка и меню CRM */
+  --nav-bg: #0E2A47; --nav-ink: #FFFFFF; --nav-muted: rgba(255, 255, 255, .64); --nav-line: rgba(255, 255, 255, .12); --nav-hover: rgba(255, 255, 255, .08);
   --accent: #F2C400; --accent-ink: #0E2A47; --accent-text: #8A6D00; --lane: #0F172A; --ok: #059669; --danger: #DC2626;
   --soft: #FEF6D3; --hover: #F3F4F6; --ring: rgba(242, 196, 0, .35);
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, .05);
+  --shadow-xs: 0 1px 2px rgba(14, 42, 71, .05);
   --shadow-sm: 0 1px 3px rgba(15, 23, 42, .06), 0 1px 2px rgba(15, 23, 42, .04);
   --shadow-lg: 0 20px 48px rgba(15, 23, 42, .18);
   --db-warm: #0E2A47; --db-violet-2: #FBE38A; /* фирменные цвета магазина: жёлтый и тёмно-синий */
@@ -16,15 +18,15 @@
 }
 @media (prefers-color-scheme: dark) {
   :root.staff-mode:not([data-theme="light"]) {
-    --bg: #0B0F17; --surface: #121826; --ink: #E5E7EB; --muted: #94A3B8; --line: #232B3B;
-    --accent: #F2C400; --accent-ink: #0A1522; --accent-text: #F2C400; --lane: #E5E7EB; --soft: rgba(242, 196, 0, .14); --hover: #1A2232; --ring: rgba(242, 196, 0, .35);
+    --bg: #0A1522; --surface: #12233A; --ink: #EAF1F8; --muted: #8FA2B6; --line: #22384F; --nav-bg: #0C1D31;
+    --accent: #F2C400; --accent-ink: #0A1522; --accent-text: #F2C400; --lane: #E5E7EB; --soft: rgba(242, 196, 0, .14); --hover: #183049; --ring: rgba(242, 196, 0, .35);
     --db-warm: #8FA2B6; --db-violet-2: #7A6400;
     --shadow-xs: none; --shadow-sm: none; --shadow-lg: 0 20px 48px rgba(0, 0, 0, .5);
   }
 }
 :root.staff-mode[data-theme="dark"] {
-  --bg: #0B0F17; --surface: #121826; --ink: #E5E7EB; --muted: #94A3B8; --line: #232B3B;
-  --accent: #F2C400; --accent-ink: #0A1522; --accent-text: #F2C400; --lane: #E5E7EB; --soft: rgba(242, 196, 0, .14); --hover: #1A2232; --ring: rgba(242, 196, 0, .35);
+  --bg: #0A1522; --surface: #12233A; --ink: #EAF1F8; --muted: #8FA2B6; --line: #22384F; --nav-bg: #0C1D31;
+  --accent: #F2C400; --accent-ink: #0A1522; --accent-text: #F2C400; --lane: #E5E7EB; --soft: rgba(242, 196, 0, .14); --hover: #183049; --ring: rgba(242, 196, 0, .35);
     --db-warm: #8FA2B6; --db-violet-2: #7A6400;
   --shadow-xs: none; --shadow-sm: none; --shadow-lg: 0 20px 48px rgba(0, 0, 0, .5);
 }
@@ -301,3 +303,34 @@
   html:not(.in-telegram).staff-mode .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px 16px; }
 }
 .db-unknown { margin: 8px 0 0; font-size: 12px; }
+
+/* =====================================================================
+   CRM в фирменном тёмно-синем: шапка с меню (на компьютере — боковое меню) тёмно-синие,
+   открытый раздел и новые события — жёлтым, как в магазине.
+   ===================================================================== */
+.staff-mode .hero { margin: 0 -16px; padding: 16px 16px 16px; background: var(--nav-bg); color: var(--nav-ink); border-radius: 0 0 18px 18px; }
+.staff-mode .brand { color: var(--nav-ink); }
+.staff-mode .brand .men { background: var(--accent); color: var(--accent-ink); }
+.staff-mode .staff-badge .role { background: var(--accent); color: var(--accent-ink); }
+.staff-mode .staff-badge .person { color: var(--nav-ink); }
+.staff-mode .staff-logout { color: var(--nav-muted); }
+.staff-mode .staff-logout:hover { color: var(--nav-ink); }
+.staff-mode .admin-btn { background: var(--nav-hover); border-color: var(--nav-line); color: var(--nav-ink); box-shadow: none; }
+.staff-mode .admin-btn:hover { border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: none; }
+.staff-mode .admin-btn:active { background: rgba(255, 255, 255, .14); }
+.staff-mode .admin-btn::before { opacity: .8; }
+.staff-mode .admin-btn[aria-current] { background: rgba(242, 196, 0, .14); border-color: var(--accent); box-shadow: none; color: var(--accent); }
+.staff-mode .admin-btn.has-new { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.staff-mode .admin-btn.drag-ghost { background: var(--nav-bg); }
+.staff-mode .chip[aria-pressed="true"], .staff-mode .db-periods button[aria-checked="true"] { background: var(--nav-bg); border-color: var(--nav-bg); color: #fff; }
+.staff-mode .db-title { color: var(--ink); }
+@media (min-width: 900px) {
+  html:not(.in-telegram).staff-mode .hero { margin: 0; border-radius: 0; border-right: 0; background: var(--nav-bg); }
+  html:not(.in-telegram).staff-mode .staff-badge { border-top-color: var(--nav-line); }
+  html:not(.in-telegram).staff-mode .admin-btn { background: transparent; color: var(--nav-muted); }
+  html:not(.in-telegram).staff-mode .admin-btn:hover { background: var(--nav-hover); color: var(--nav-ink); }
+  html:not(.in-telegram).staff-mode .admin-btn[aria-current] { background: var(--nav-hover); color: var(--nav-ink); box-shadow: inset 3px 0 0 var(--accent); }
+  html:not(.in-telegram).staff-mode .admin-btn[aria-current]::before { color: var(--accent); background: var(--accent); }
+  html:not(.in-telegram).staff-mode .admin-btn.has-new, html:not(.in-telegram).staff-mode .admin-btn[aria-current].has-new { background: var(--accent); color: var(--accent-ink); }
+  html:not(.in-telegram).staff-mode .admin-btn.has-new::before { background: var(--accent-ink); }
+}

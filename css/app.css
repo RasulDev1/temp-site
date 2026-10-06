@@ -62,12 +62,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ---------- Сетка товаров ---------- */
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.card { position: relative; cursor: pointer; }
+.card { position: relative; cursor: pointer; container-type: inline-size; } /* текст карточки — от её ширины (cqi) */
 .pic { display: block; width: 100%; aspect-ratio: 1; border: 0; padding: 0; border-radius: 16px; position: relative; overflow: hidden; }
 .pic::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,.18), transparent 30%); pointer-events: none; }
 .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-.card .name { font-weight: 600; font-size: 14px; line-height: 1.3; margin: 9px 2px 0; }
+.card .name { font-weight: 600; font-size: clamp(12px, 8.1cqi, 17px); line-height: 1.3; margin: 9px 2px 0; }
 .card .cost { margin: 3px 2px 0; }
+.card .cost b { font-size: clamp(13px, 8.7cqi, 19px); }
+.card .cost s { font-size: clamp(11px, 7.2cqi, 15px); }
+.card .badge { font-size: clamp(10.5px, 6.9cqi, 14px); top: 5.8cqi; left: 5.8cqi; }
 .card.sold .ph { filter: grayscale(.7); opacity: .75; }
 .badge { position: absolute; top: 10px; left: 10px; z-index: 1; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 12px; padding: 3px 8px; border-radius: 6px; }
 .badge.out { background: var(--ink); color: var(--bg); }

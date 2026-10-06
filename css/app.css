@@ -29,8 +29,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .shop { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; font-style: normal; font-size: clamp(10px, 3.6cqi, 12.5px); line-height: 1.35; color: var(--muted); text-align: right; display: flex; flex-direction: column; gap: 3px; padding-bottom: 4px; }
 .shop span:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; } /* город, под ним улица — каждая одной строкой */
 .shop .hours { font-weight: 600; color: var(--ink); background: color-mix(in srgb, var(--accent) 22%, transparent); padding: 2px 7px; border-radius: 6px; align-self: flex-end; }
-.shop .hours i { font-style: normal; white-space: nowrap; }
-@media (max-width: 370px) { .shop { font-size: 11px; } .shop .hours i { display: block; } }
+.shop .hours i { font-style: normal; white-space: nowrap; display: block; } /* на телефоне — в две строки: плашка ровно по тексту */
+@container (min-width: 480px) { .shop .hours i { display: inline; } }
 .lanes { display: flex; gap: 6px; margin: 14px 0 6px; }
 .lanes span, .finish span { flex: 1; height: 5px; background: var(--lane); border-radius: 3px; transform-origin: left; animation: run .9s var(--ease) both; }
 .lanes span:nth-child(2), .finish span:nth-child(2) { animation-delay: .08s; opacity: .6; }

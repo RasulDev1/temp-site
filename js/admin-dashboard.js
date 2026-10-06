@@ -65,12 +65,21 @@ const bucketOf = (iso, month) => (iso ? (month ? monthKey(new Date(iso)) : dayKe
  *  берём сумму заказа. Возвращённые деньги вычитаются. */
 const isSale = (o) => ["paid", "delivered", "return_requested", "return_approved", "returned"].includes(o.status);
 const paidAmount = (o) => (o.payment ? o.payment.amount : Number(o.total) || 0) - (o.refund?.amount || 0);
+/** Закупочная стоимость проданного: снимок при оплате, иначе — по текущим закупочным ценам; вещь, вернувшаяся на склад, — 0.
+ *  null — закупочная цена неизвестна */
+function costOf(o) {
+  if (o.status === "returned" && o.refund?.restocked) return 0;
+  if (o.costTotal != null) return o.costTotal;
+  if (!state.costs) return null;
+  const known = (o.items || []).filter((l) => state.costs[l.id] != null);
+  return known.length ? known.reduce((n, l) => n + Number(state.costs[l.id]) * (Number(l.qty) || 1), 0) : null;
+}
 
 /** Показатели по столбикам: заявки (по дате оформления), продажи (по дате оплаты), новые клиенты (по первому заказу) */
 function series(offset = 0) {
   const list = buckets(offset), month = list[0].month, index = new Map(list.map((b, i) => [b.key, i]));
   const zero = () => list.map(() => 0);
-  const s = { buckets: list, orders: zero(), sales: zero(), cash: zero(), card: zero(), unknown: zero(), newClients: zero(), buyers: list.map(() => new Set()), clients: new Set() };
+  const s = { buckets: list, orders: zero(), sales: zero(), revenue: zero(), noCost: 0, cash: zero(), card: zero(), unknown: zero(), newClients: zero(), buyers: list.map(() => new Set()), clients: new Set() };
   const firstOrder = new Map();
   for (const o of orders) {
     const id = o.user?.id;
@@ -81,6 +90,10 @@ function series(offset = 0) {
       const j = index.get(bucketOf(o.payment?.at || o.date, month)), amount = paidAmount(o);
       if (j != null) {
         s.sales[j] += amount;
+        // выручка — продажа минус закупочная стоимость
+        const cost = costOf(o);
+        s.revenue[j] += amount - (cost || 0);
+        if (cost == null) s.noCost++;
         if (o.payment?.method === "cash") s.cash[j] += amount; else if (o.payment?.method === "card") s.card[j] += amount; else s.unknown[j] += amount;
       }
     }
@@ -225,9 +238,10 @@ function render() {
         ${bars(now.buyers.map((b) => b.size), list, "warm", (v) => `${v} ${pluralize(v, "клиент", "клиента", "клиентов")}`)}
       </section>
       <section class="db-card db-revenue">
-        <div class="db-card-h"><div><span class="db-label">Выручка</span><b>${formatPrice(sales)}</b></div>
+        <div class="db-card-h"><div><span class="db-label">Выручка</span><b>${formatPrice(Math.round(total(now.revenue)))}</b></div>
           <div class="db-legend"><span class="l1">Этот период</span><span class="l2">Прошлый период</span></div></div>
-        ${lineChart(now.sales, before.sales, list)}
+        ${lineChart(now.revenue, before.revenue, list)}
+        <p class="adm-sub db-unknown">Продажи минус закупочная стоимость.${now.noCost ? ` У ${now.noCost} ${pluralize(now.noCost, "продажи", "продаж", "продаж")} закупочная цена не указана, они посчитаны без вычета.` : ""}</p>
       </section>
       <section class="db-card db-pay">
         <div class="db-card-h"><div><span class="db-label">Способы оплаты</span><b>${formatPrice(sales)}</b></div></div>

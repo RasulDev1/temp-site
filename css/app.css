@@ -24,7 +24,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- Шапка: название как дорожки стадиона ---------- */
 .hero { padding: 22px 0 8px; }
 .hero-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.brand { font: 900 clamp(38px, 12.5vw, 72px)/.9 var(--display); letter-spacing: -.03em; margin: 0; flex: none; }
+.brand { font: 900 clamp(38px, calc(12.5vw / var(--fit, 1)), 72px)/.9 var(--display); letter-spacing: -.03em; margin: 0; flex: none; }
 .brand .men { font-size: .24em; letter-spacing: .08em; vertical-align: top; margin-left: .35em; background: var(--accent); color: var(--accent-ink); padding: .18em .45em; border-radius: .3em; position: relative; top: .35em; }
 .shop { flex: none; white-space: nowrap; font-style: normal; font-size: 12.5px; line-height: 1.35; color: var(--muted); text-align: right; display: flex; flex-direction: column; gap: 3px; padding-bottom: 4px; }
 .shop span:first-child { color: var(--ink); font-weight: 600; }

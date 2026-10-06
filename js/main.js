@@ -12,6 +12,7 @@ if (["staff", "tasks", "order"].some((p) => params.has(p)) || /^order_/.test(tel
   location.replace("crm.html" + location.search);
 } else {
   document.documentElement.classList.toggle("in-telegram", inTelegram);
+  fitToPhone();
   setupTelegram();
   initNavigation();
   initShop();
@@ -24,4 +25,17 @@ if (["staff", "tasks", "order"].some((p) => params.has(p)) || /^order_/.test(tel
   if (params.get("tab") === "orders" || telegram?.initDataUnsafe?.start_param === "orders") setTab("orders");
   // На устройстве, где сотрудник входил, — ссылка на страницу сотрудников (например, в мини-приложении Telegram)
   if (storage.get("temp_staff_token", "")) $("staffEntry").hidden = false;
+}
+
+/** В Telegram на телефоне магазин масштабируется под ширину экрана: макет рассчитан на 390 px (обычный iPhone),
+    на маленьком телефоне всё чуть мельче, на большом — чуть крупнее. Планшеты и компьютер — без масштаба. */
+function fitToPhone() {
+  if (!inTelegram) return;
+  const apply = () => {
+    const width = window.innerWidth, zoom = width >= 600 ? 1 : Math.min(1.15, Math.max(0.82, width / 390));
+    document.documentElement.style.zoom = zoom === 1 ? "" : zoom.toFixed(3);
+    document.documentElement.style.setProperty("--fit", zoom.toFixed(3)); // vw и vh в CSS делим на него, иначе масштаб удвоится
+  };
+  apply();
+  addEventListener("resize", apply);
 }

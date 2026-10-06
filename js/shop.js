@@ -126,14 +126,22 @@ export function addSelectedToCart() {
 }
 
 /** Фото товара улетает в корзину */
-function flyToCart(photo, from) {
+function flyToCart(photo, fromRect) {
   const bar = $("cartBar"), cartTab = document.querySelector('[data-tab="cart"]');
-  const target = (bar.classList.contains("show") ? $("cartBarButton") : cartTab).getBoundingClientRect();
-  if (reducedMotion || target.bottom <= 0) return toast("Добавлено в корзину");
+  const targetRect = (bar.classList.contains("show") ? $("cartBarButton") : cartTab).getBoundingClientRect();
+  if (reducedMotion || targetRect.bottom <= 0) return toast("Добавлено в корзину");
+  let from = fromRect, target = targetRect;
   const flyer = Object.assign(document.createElement("div"), { className: "flyer" });
   flyer.style.cssText = `left:${from.left}px;top:${from.top}px;width:${from.width}px;height:${from.height}px`;
   flyer.innerHTML = `<img src="${photo.src}" alt="" style="object-position:${photo.style.objectPosition}">`;
   document.body.append(flyer);
+  // магазин может быть масштабирован под экран (main.js): переводим координаты экрана в координаты страницы
+  const k = flyer.getBoundingClientRect().width / from.width || 1;
+  if (Math.abs(k - 1) > 0.01) {
+    const scale = (r) => ({ left: r.left / k, top: r.top / k, width: r.width / k, height: r.height / k });
+    from = scale(from); target = scale(target);
+    flyer.style.cssText = `left:${from.left}px;top:${from.top}px;width:${from.width}px;height:${from.height}px`;
+  }
   const dx = target.left + 28 - from.left - from.width / 2, dy = target.top + target.height / 2 - from.top - from.height / 2;
   flyer.animate([
     { transform: "none", borderRadius: "16px" },

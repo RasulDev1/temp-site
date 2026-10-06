@@ -1,6 +1,7 @@
 // ТЕМП · Telegram-бот магазина (Supabase Edge Function «telegram-bot»).
 // Принимает сообщения покупателей от Telegram и кладёт их в чат заказа на сайте; на /start — кнопки магазина.
 // Ответы менеджера с сайта бот отправляет сам из базы (supabase-bot.sql), эта функция для них не нужна.
+// Менеджер отправил реквизиты — база зовёт эту функцию ({ open_order: id }), и бот сам открывает покупателю этот заказ.
 //
 // Секреты функции (Edge Functions → Secrets):
 //   TELEGRAM_BOT_TOKEN      — токен бота от @BotFather
@@ -190,8 +191,9 @@ async function sendPhotos(chatId: number, items: Json[]) {
   if (urls.length > 1) for (const url of urls) await sendPhotoFiles(chatId, [url]);
 }
 
-/** Покупатель нажал на заказ: фото, дата, состав, статус. Запоминаем — следующие сообщения уйдут менеджеру по нему. */
-async function chooseOrder(chatId: number, userId: number, orderId: number) {
+/** Покупатель нажал на заказ: фото, дата, состав, статус. Запоминаем — следующие сообщения уйдут менеджеру по нему.
+    accepted — менеджер только что принял заказ и отправил реквизиты: бот открывает заказ сам. */
+async function chooseOrder(chatId: number, userId: number, orderId: number, accepted = false) {
   const { data: o } = await db.from("orders")
     .select("id,status,total,items,payment_details,manager_note,created_at")
     .eq("id", orderId).eq("user_id", userId).maybeSingle();
@@ -201,7 +203,7 @@ async function chooseOrder(chatId: number, userId: number, orderId: number) {
   const items = itemsOf(o);
   await sendPhotos(chatId, items);
   const lines = items.map((l) => `• ${l.name} — ${String(l.colorName ?? "").toLowerCase()}, размер ${l.size}${Number(l.qty) > 1 ? `, ${l.qty} шт.` : ""}`);
-  let text = `🛍 Ваш заказ от ${day(o.created_at)}\n\n${lines.join("\n")}\n\nСумма: ${rub(o.total)}\nСтатус: ${STATUS[o.status] ?? o.status}`;
+  let text = `${accepted ? "✅ Заказ принят! " : "🛍 "}Ваш заказ от ${day(o.created_at)}\n\n${lines.join("\n")}\n\nСумма: ${rub(o.total)}\nСтатус: ${STATUS[o.status] ?? o.status}`;
   if (o.status === "awaiting_payment" && o.payment_details) {
     text += `\n\n💳 Реквизиты для оплаты:\n${o.payment_details}`;
     if (o.manager_note) text += `\n\n${o.manager_note}`;
@@ -295,7 +297,23 @@ async function handle(msg: Json) {
   // Сообщение передано менеджеру — бот ничего не отвечает
 }
 
+/** Вызов из базы (supabase-bot.sql): менеджер отправил реквизиты — открываем покупателю этот заказ в боте.
+    Подпись — токен бота: он есть и у функции, и в Vault базы. */
+async function openFromDatabase(request: Request) {
+  const body = await request.json().catch(() => null);
+  const orderId = Number(body?.open_order);
+  if (!orderId) return new Response("bad request", { status: 400 });
+  const { data: o } = await db.from("orders").select("user_id").eq("id", orderId).maybeSingle();
+  if (!o?.user_id) return new Response("ok");
+  // фото и сообщение отправляем уже после ответа базе — она не ждёт дольше нескольких секунд
+  const work = chooseOrder(o.user_id, o.user_id, orderId, true).catch((e) => console.error(e));
+  const runtime = (globalThis as Json).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(work); else await work;
+  return new Response("ok");
+}
+
 Deno.serve(async (request) => {
+  if (TOKEN && request.headers.get("x-bot-token") === TOKEN) return openFromDatabase(request);
   // Запросы принимаем только от Telegram: он присылает секрет, указанный в setWebhook
   if (!SECRET || request.headers.get("x-telegram-bot-api-secret-token") !== SECRET) {
     console.error("Запрос отклонён: секрет не совпадает. TELEGRAM_WEBHOOK_SECRET в Supabase должен быть таким же, как secret_token в setWebhook");

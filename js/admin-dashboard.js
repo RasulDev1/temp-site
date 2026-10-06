@@ -63,7 +63,7 @@ function buckets(offset = 0) {
 const bucketOf = (iso, month) => (iso ? (month ? monthKey(new Date(iso)) : dayKey(new Date(iso))) : null);
 /** Оплаченный заказ: «Оплачен», «Вручён» или с возвратом. Если сумма оплаты не записана (заказ оплачен до кнопки «Оплатить»),
  *  берём сумму заказа. Возвращённые деньги вычитаются. */
-const isSale = (o) => ["paid", "delivered", "return_requested", "returned"].includes(o.status);
+const isSale = (o) => ["paid", "delivered", "return_requested", "return_approved", "returned"].includes(o.status);
 const paidAmount = (o) => (o.payment ? o.payment.amount : Number(o.total) || 0) - (o.refund?.amount || 0);
 
 /** Показатели по столбикам: заявки (по дате оформления), продажи (по дате оплаты), новые клиенты (по первому заказу) */

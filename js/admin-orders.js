@@ -9,12 +9,12 @@ import { chatButtonHtml, openChat, onChatEvent, hasUnread } from "./chat.js?v=20
 import { openCustomer } from "./admin-customers.js?v=20261001b";
 
 const STATUS = { new: "Новый", accepted: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", rejected: "Отказ",
-  return_requested: "Просят возврат", returned: "Возврат" };
+  return_requested: "Просят возврат", return_approved: "Возврат одобрен", returned: "Возврат вручён" };
 /** Вкладки списка заказов. «Новые» видны, только когда есть заказы, которые нужно принять или отклонить. */
 const STAFF_GROUPS = [["new", "Новые"], ["rejected", "Отменённые"], ["paid", "Принятые"], ["accepted", "Ожидают оплаты"], ["delivered", "Вручённые"], ["returns", "Возвраты"]];
 const GROUP_EMPTY = { rejected: "Отменённых заказов нет.", paid: "Оплаченных заказов, ждущих вручения, нет.",
   accepted: "Заказов, ожидающих оплаты, нет.", delivered: "Вручённых заказов нет.", returns: "Возвратов нет." };
-const staffGroupOf = (o) => (o.status === "return_requested" || o.status === "returned" ? "returns" : o.status);
+const staffGroupOf = (o) => (["return_requested", "return_approved", "returned"].includes(o.status) ? "returns" : o.status);
 let staffGroup = null; // выбранная вкладка; null — выбрать самую нужную
 let openForm = null; // { num, type: "accept" | "reject" | "decline", text, note }, { num, type: "pay", method, amount }
                      // или { num, type: "return", reason, method, amount, restock }
@@ -96,7 +96,8 @@ const paymentHtml = (o) => o.payment
     o.payment.by || o.payment.at ? `<br><small>${[escapeHtml(o.payment.by), o.payment.at && formatDate(o.payment.at)].filter(Boolean).join(", ")}</small>` : ""}</p>` : "";
 
 /* ---------- Возврат: просьба покупателя, оформление и отказ ---------- */
-const canReturn = (o) => Boolean(api.returnOrder) && ["paid", "delivered", "return_requested"].includes(o.status);
+// Возврат в два шага: «Одобрить возврат» (сколько и как вернём, ждём вещь) → «Возврат вручён» (вещь у нас, деньги отданы)
+const canReturn = (o) => Boolean(api.returnApprove) && ["paid", "delivered", "return_requested", "return_approved"].includes(o.status);
 
 function returnFormHtml(o) {
   if (openForm.type === "decline") return `<div class="ord-form">
@@ -108,32 +109,42 @@ function returnFormHtml(o) {
   return `<div class="ord-form">
     <label class="field"><span>Причина возврата</span>
       <textarea id="retReason" maxlength="1000" placeholder="Например: не подошёл размер">${escapeHtml(openForm.reason || "")}</textarea></label>
-    <div class="field"><span>Как вернули деньги</span>
-      <div class="ways" role="radiogroup" aria-label="Как вернули деньги">${PAY_METHODS.map(([id, title, hint]) =>
+    <div class="field"><span>Как вернём деньги</span>
+      <div class="ways" role="radiogroup" aria-label="Как вернём деньги">${PAY_METHODS.map(([id, title, hint]) =>
         `<button class="way" role="radio" data-ret-method="${id}" aria-checked="${openForm.method === id}"><b>${title}</b><small>${hint}</small></button>`).join("")}</div></div>
     <label class="field"><span>Сумма возврата, ₽</span>
       <input id="retAmount" type="number" inputmode="decimal" min="0" step="0.01" value="${escapeHtml(String(openForm.amount))}"></label>
-    <label class="check-line"><input type="checkbox" id="retRestock" ${openForm.restock ? "checked" : ""}> Вернуть товар на склад</label>
-    <p class="adm-sub">Снимите отметку, если вещь с браком и продавать её снова нельзя.</p>
+    <p class="adm-sub">Покупатель получит сообщение: возврат одобрен, пусть привезёт или отправит вещь. Когда вещь будет у вас и деньги отданы, нажмите «Возврат вручён».</p>
     <p class="hint" id="formHint"></p>
-    <div class="ord-actions"><button class="primary sm" data-ret-save="${o.num}">Оформить возврат</button>
+    <div class="ord-actions"><button class="primary sm" data-ret-save="${o.num}">${o.status === "return_approved" ? "Сохранить" : "Одобрить возврат"}</button>
       <button class="ghost" data-cancel>Отмена</button></div></div>`;
 }
 
 function returnHtml(o) {
   const formOpen = openForm?.num === o.num && (openForm.type === "return" || openForm.type === "decline");
   if (o.status === "returned" && o.refund) return `<div class="ord-ret">
-    <p><b>Возврат оформлен</b>: вернули ${formatPrice(o.refund.amount)} ${PAY_METHOD[o.refund.method] || ""}</p>
+    <p><b>Возврат вручён</b>: вернули ${formatPrice(o.refund.amount)} ${PAY_METHOD[o.refund.method] || ""}</p>
     ${o.refund.reason ? `<p>Причина: «${escapeHtml(o.refund.reason)}»</p>` : ""}
     <small>${o.refund.restocked ? "Товар вернулся на склад" : "Товар не возвращали на склад"} · ${[escapeHtml(o.refund.by), formatDate(o.refund.at)].filter(Boolean).join(", ")}</small></div>`;
   const request = o.status === "return_requested" && o.returnRequest ? `<div class="ord-ret">
     <p><b>Покупатель просит вернуть</b>: «${escapeHtml(o.returnRequest.reason)}»</p>
     <small>${formatDate(o.returnRequest.at)}${o.deliveredAt ? ` · вручён ${formatDate(o.deliveredAt)}` : ""}</small></div>` : "";
   const declined = o.status === "delivered" && o.returnDeclined ? `<div class="ord-ret"><p>В возврате отказано: «${escapeHtml(o.returnDeclined)}»</p></div>` : "";
-  if (!canReturn(o)) return request + declined;
-  if (formOpen) return request + declined + returnFormHtml(o);
+  const a = o.returnApproved;
+  const approved = o.status === "return_approved" && a ? `<div class="ord-ret">
+    <p><b>Возврат одобрен</b>: вернём ${formatPrice(a.amount)} ${PAY_METHOD[a.method] || ""}, ждём вещь</p>
+    ${a.reason ? `<p>Причина: «${escapeHtml(a.reason)}»</p>` : ""}
+    <small>${[escapeHtml(a.by), formatDate(a.at)].filter(Boolean).join(", ")}</small></div>` : "";
+  if (!canReturn(o)) return request + declined + approved;
+  if (formOpen) return request + declined + approved + returnFormHtml(o);
+  if (o.status === "return_approved") return approved + `<div class="ord-form">
+    <label class="check-line"><input type="checkbox" id="retDoneRestock-${o.num}" ${/^брак/i.test(a?.reason || o.returnRequest?.reason || "") ? "" : "checked"}> Вернуть товар на склад</label>
+    <p class="adm-sub">Снимите отметку, если вещь с браком и продавать её снова нельзя.</p>
+    <p class="hint" id="retDoneHint-${o.num}"></p>
+    <div class="ord-actions"><button class="primary sm" data-ret-done="${o.num}">Возврат вручён</button>
+      <button class="ghost" data-return="${o.num}">Изменить</button><button class="ghost" data-decline="${o.num}">Отказать</button></div></div>`;
   return request + declined + (o.status === "return_requested"
-    ? `<div class="ord-actions"><button class="primary sm" data-return="${o.num}">Оформить возврат</button>
+    ? `<div class="ord-actions"><button class="primary sm" data-return="${o.num}">Одобрить возврат</button>
         <button class="ghost" data-decline="${o.num}">Отказать</button></div>`
     : `<button class="link ord-return" data-return="${o.num}">Оформить возврат</button>`);
 }
@@ -142,7 +153,7 @@ function decisionResultHtml(o) {
   if (o.status === "new") return "";
   return `<div class="ord-res">
     <p>${o.status === "rejected" ? `Отказ: «${escapeHtml(o.message)}»`
-      : `${{ paid: "Оплачен", delivered: "Оплачен и вручён", return_requested: "Оплачен и вручён", returned: "Оплачен" }[o.status] || "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
+      : `${{ paid: "Оплачен", delivered: "Оплачен и вручён", return_requested: "Оплачен и вручён", return_approved: "Оплачен и вручён", returned: "Оплачен" }[o.status] || "Принят"}. Реквизиты для оплаты:<span class="req-t">${escapeHtml(paymentDetails(o))}</span>`}</p>
     ${paymentHtml(o)}
     ${o.status === "accepted" && api.markPaid ? openForm?.num === o.num && openForm.type === "pay" ? payFormHtml(o)
       : `<div class="ord-actions"><button class="primary sm" data-pay="${o.num}">Оплатить</button></div>` : ""}
@@ -279,6 +290,7 @@ async function onOrdersClick(e) {
   const historyButton = t.closest("[data-history]");
   if (historyButton) return toggleHistory(Number(historyButton.dataset.history));
   if (t.dataset.retSave) return saveReturn(t);
+  if (t.dataset.retDone) return doneReturn(t);
   if (t.dataset.declineSave) return declineReturn(t);
   if (t.dataset.accept) openForm = { num: Number(t.dataset.accept), type: "accept", text: storage.get("temp_last_pay", "") };
   else if (t.dataset.reject) openForm = { num: Number(t.dataset.reject), type: "reject", text: rejectionText(state.adminOrders.find((o) => o.num === Number(t.dataset.reject))) };
@@ -289,8 +301,9 @@ async function onOrdersClick(e) {
   else if (t.dataset.paySave) return markPaid(t);
   else if (t.dataset.return) {
     const o = state.adminOrders.find((x) => x.num === Number(t.dataset.return));
-    openForm = { num: o.num, type: "return", reason: o.returnRequest?.reason || "", method: o.payment?.method || null,
-      amount: o.payment?.amount ?? o.total, restock: !/^брак/i.test(o.returnRequest?.reason || "") };
+    const a = o.returnApproved;
+    openForm = { num: o.num, type: "return", reason: a?.reason || o.returnRequest?.reason || "", method: a?.method || o.payment?.method || null,
+      amount: a?.amount ?? o.payment?.amount ?? o.total };
   } else if (t.dataset.decline) openForm = { num: Number(t.dataset.decline), type: "decline", text: "" };
   else if (t.closest("[data-ret-method]")) { keepReturnDraft(); openForm.method = t.closest("[data-ret-method]").dataset.retMethod; haptic(); }
   else return;
@@ -466,7 +479,6 @@ async function markPaid(button) {
 function keepReturnDraft() {
   openForm.reason = $("retReason").value;
   openForm.amount = $("retAmount").value;
-  openForm.restock = $("retRestock").checked;
 }
 
 function returnError(error) {
@@ -477,27 +489,45 @@ function returnError(error) {
   return errorMessage(error);
 }
 
-/** «Оформить возврат»: причина, как и сколько вернули, вернуть ли товар на склад */
+/** «Одобрить возврат»: причина, сколько и как вернём; покупателю уходит сообщение, ждём вещь */
 async function saveReturn(button) {
   keepReturnDraft();
   const amount = Number(String(openForm.amount).replace(",", "."));
   const problem = openForm.reason.trim().length < 3 ? "Напишите причину возврата"
-    : !openForm.method ? "Выберите, как вернули деньги: наличными или на карту"
+    : !openForm.method ? "Выберите, как вернём деньги: наличными или на карту"
     : !(amount >= 0) || openForm.amount === "" ? "Впишите сумму возврата" : "";
   if (problem) { $("formHint").textContent = problem; return haptic("medium"); }
   button.disabled = true;
   button.textContent = "Сохраняем…";
   const num = Number(button.dataset.retSave);
   try {
-    await api.returnOrder(num, openForm.reason.trim(), amount, openForm.method, openForm.restock);
+    await api.returnApprove(num, openForm.reason.trim(), amount, openForm.method);
     haptic("success");
-    toast(`Возврат по заказу №${num} оформлен`);
-    if (openForm.restock) refreshCatalog(); // товар вернулся на склад
+    toast(`Возврат по заказу №${num} одобрен, ждём вещь`);
     openForm = null;
   } catch (error) {
     button.disabled = false;
-    button.textContent = "Оформить возврат";
+    button.textContent = "Одобрить возврат";
     $("formHint").textContent = returnError(error);
+    return haptic("medium");
+  }
+  await showOrder(num);
+}
+
+/** «Возврат вручён»: вещь у магазина, деньги отданы; по отметке товар возвращается на склад */
+async function doneReturn(button) {
+  const num = Number(button.dataset.retDone), restock = $(`retDoneRestock-${num}`)?.checked;
+  button.disabled = true;
+  button.textContent = "Сохраняем…";
+  try {
+    await api.returnDone(num, restock);
+    haptic("success");
+    toast(`Возврат по заказу №${num} вручён`);
+    if (restock) refreshCatalog(); // товар вернулся на склад
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Возврат вручён";
+    $(`retDoneHint-${num}`).textContent = returnError(error);
     return haptic("medium");
   }
   await showOrder(num);

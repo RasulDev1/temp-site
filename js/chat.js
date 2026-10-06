@@ -6,7 +6,7 @@ import { state } from "./state.js?v=20261001b";
 import { supabaseApi } from "./supabase.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 
-const OPEN_STATUSES = ["accepted", "paid", "return_requested"]; // пока решается возврат, тоже можно писать
+const OPEN_STATUSES = ["accepted", "paid", "return_requested", "return_approved"]; // пока решается возврат, тоже можно писать
 const MAX_PDF = 3 * 1024 * 1024;
 const MAX_IMAGE_SIDE = 2000;
 const SEEN_KEY = "temp_chat_seen";

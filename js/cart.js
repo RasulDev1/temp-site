@@ -216,7 +216,7 @@ function showOrderPlaced(items, note = "Когда менеджер провер
 
 /* ---------- Мои заказы ---------- */
 const ORDER_STATUS = { new: "Проверяем наличие", accepted: "Ждёт оплаты", paid: "Оплачен, готовим к отправке", delivered: "Вручён", rejected: "Отменён",
-  return_requested: "Возврат на рассмотрении", returned: "Возврат оформлен" };
+  return_requested: "Возврат на рассмотрении", return_approved: "Возврат одобрен", returned: "Возврат вручён" };
 export const paymentDetails = (order) => order.payDetails || order.payUrl || "";
 const isPaymentLink = (text) => /^https:\/\/\S+$/.test(text.trim());
 
@@ -234,7 +234,7 @@ function orderLinePhoto(line) {
 }
 
 /** Отзыв о товаре можно оставить, когда заказ вручён (в том числе если потом оформлен возврат) */
-const REVIEW_STATUSES = ["delivered", "return_requested", "returned"];
+const REVIEW_STATUSES = ["delivered", "return_requested", "return_approved", "returned"];
 function reviewButtonHtml(order, line, seen) {
   const id = Number(line.id);
   if (!useSupabase || !REVIEW_STATUSES.includes(order.status) || !id || seen.has(id) || !findProduct(id)) return "";
@@ -286,7 +286,8 @@ function returnFormHtml(o) {
 
 function returnInfoHtml(o) {
   if (o.status === "return_requested") return `<p class="ord-note">Вы попросили вернуть: «${escapeHtml(o.returnRequest?.reason || "")}». Менеджер рассмотрит заявку и напишет вам. Если нужно, пришлите фото в чат.</p>`;
-  if (o.status === "returned" && o.refund) return `<p class="ord-note">Возврат оформлен: вернём ${formatPrice(o.refund.amount)}${PAY_WAY[o.refund.method] ? " " + PAY_WAY[o.refund.method] : ""}.</p>`;
+  if (o.status === "return_approved" && o.returnApproved) return `<p class="ord-note">Возврат одобрен. Привезите или отправьте вещь с бирками, и мы вернём ${formatPrice(o.returnApproved.amount)}${PAY_WAY[o.returnApproved.method] ? " " + PAY_WAY[o.returnApproved.method] : ""}. Если есть вопросы, напишите менеджеру в чат.</p>`;
+  if (o.status === "returned" && o.refund) return `<p class="ord-note">Возврат вручён: вернули ${formatPrice(o.refund.amount)}${PAY_WAY[o.refund.method] ? " " + PAY_WAY[o.refund.method] : ""}.</p>`;
   if (o.status !== "delivered") return "";
   if (o.returnDeclined) return `<p class="ord-note">В возврате отказано: ${escapeHtml(o.returnDeclined)}</p>`;
   if (!canRequestReturn(o)) return "";
@@ -338,7 +339,7 @@ function myOrderHtml(o) {
 /** Заказы покупателя по группам: принятые (в том числе оплаченные), вручённые, отменённые и ещё не подтверждённые */
 const ORDER_GROUPS = [["accepted", "Принятые"], ["delivered", "Вручённые"], ["returns", "Возвраты"], ["rejected", "Отменённые"], ["new", "Ждут подтверждения"]];
 const groupOf = (o) => (o.status === "rejected" || o.status === "delivered" ? o.status
-  : o.status === "return_requested" || o.status === "returned" ? "returns"
+  : ["return_requested", "return_approved", "returned"].includes(o.status) ? "returns"
   : o.status === "accepted" || o.status === "paid" ? "accepted" : "new");
 let ordersGroup = null; // выбранная группа; null — первая непустая
 

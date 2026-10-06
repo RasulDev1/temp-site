@@ -8,7 +8,7 @@
 -- ---------- 1. Новые статусы: «Возврат запрошен» и «Возврат» ----------
 alter table public.orders drop constraint if exists orders_status_check;
 alter table public.orders add constraint orders_status_check
-  check (status in ('new', 'awaiting_payment', 'paid', 'delivered', 'cancelled', 'return_requested', 'returned'));
+  check (status in ('new', 'awaiting_payment', 'paid', 'delivered', 'cancelled', 'return_requested', 'return_approved', 'returned'));
 
 alter table public.orders add column if not exists delivered_at          timestamptz;
 alter table public.orders add column if not exists delivered_by          text;
@@ -16,7 +16,11 @@ alter table public.orders add column if not exists return_request_reason text;  
 alter table public.orders add column if not exists return_requested_at   timestamptz;
 alter table public.orders add column if not exists return_declined       text;        -- почему менеджер отказал в возврате
 alter table public.orders add column if not exists return_reason         text;        -- причина возврата, пишет менеджер
-alter table public.orders add column if not exists returned_at           timestamptz;
+alter table public.orders add column if not exists return_amount         numeric(12, 2); -- сколько вернём (решение менеджера)
+alter table public.orders add column if not exists return_method         text;           -- как вернём: cash · card
+alter table public.orders add column if not exists return_approved_at    timestamptz;    -- возврат одобрен, ждём вещь
+alter table public.orders add column if not exists return_approved_by    text;
+alter table public.orders add column if not exists returned_at           timestamptz;    -- возврат вручён: вещь у магазина, деньги отданы
 alter table public.orders add column if not exists returned_by           text;
 alter table public.orders add column if not exists refund_amount         numeric(12, 2);
 alter table public.orders add column if not exists refund_method         text;
@@ -157,7 +161,7 @@ $$;
 create or replace function public.orders_log_events()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare actor text := public.event_actor(new.user_id); body text;
-  st jsonb := '{"new":"Новый","awaiting_payment":"Ждёт оплаты","paid":"Оплачен","delivered":"Вручён","cancelled":"Отказ","return_requested":"Возврат запрошен","returned":"Возврат"}';
+  st jsonb := '{"new":"Новый","awaiting_payment":"Ждёт оплаты","paid":"Оплачен","delivered":"Вручён","cancelled":"Отказ","return_requested":"Возврат запрошен","return_approved":"Возврат одобрен","returned":"Возврат вручён"}';
   way jsonb := '{"cash":"наличными","card":"картой"}';
 begin
   if tg_op = 'INSERT' then
@@ -170,10 +174,12 @@ begin
       when new.status = 'awaiting_payment' and old.status = 'new' then 'Принят, покупателю отправлены реквизиты для оплаты'
       when new.status = 'cancelled' then 'Отказ' || coalesce(': «' || nullif(trim(new.manager_note), '') || '»', '')
       when new.status = 'paid' then 'Оплачен' || coalesce(' ' || (way ->> new.payment_method), '') || coalesce(': ' || public.rub(new.paid_amount), '')
-      when new.status = 'delivered' and old.status = 'return_requested' then 'В возврате отказано' || coalesce(': «' || nullif(trim(new.return_declined), '') || '»', '')
+      when new.status = 'delivered' and old.status in ('return_requested', 'return_approved') then 'В возврате отказано' || coalesce(': «' || nullif(trim(new.return_declined), '') || '»', '')
       when new.status = 'delivered' then 'Вручён покупателю'
       when new.status = 'return_requested' then 'Покупатель запросил возврат' || coalesce(': «' || nullif(trim(new.return_request_reason), '') || '»', '')
-      when new.status = 'returned' then 'Возврат оформлен' || coalesce(': «' || nullif(trim(new.return_reason), '') || '»', '')
+      when new.status = 'return_approved' then 'Возврат одобрен' || coalesce(': «' || nullif(trim(new.return_reason), '') || '»', '')
+        || '. Вернём ' || public.rub(new.return_amount) || coalesce(' ' || (way ->> new.return_method), '') || ', ждём вещь'
+      when new.status = 'returned' then 'Возврат вручён' || coalesce(': «' || nullif(trim(new.return_reason), '') || '»', '')
         || '. Вернули ' || public.rub(new.refund_amount) || coalesce(' ' || (way ->> new.refund_method), '')
         || case when new.restocked then ', товар вернулся на склад' else ', товар не возвращается на склад' end
       else 'Статус: ' || coalesce(st ->> old.status, old.status) || ' → ' || coalesce(st ->> new.status, new.status) end;
@@ -262,13 +268,45 @@ begin
   where id = p_id;
 end $$;
 
+-- Шаг 1. Возврат одобрен: менеджер решил вернуть деньги (сколько и как), покупатель привозит или отправляет вещь
+create or replace function public.order_return_approve(p_id bigint, p_reason text, p_amount numeric, p_method text)
+returns void language plpgsql volatile security definer set search_path = '' as $$
+declare me public.staff_accounts := public.staff_current(); o public.orders;
+begin
+  if me.id is null then raise exception 'staff:forbidden' using errcode = '42501'; end if;
+  if length(trim(coalesce(p_reason, ''))) < 3 then raise exception 'staff:empty' using errcode = '22023'; end if;
+  if p_method is null or p_method not in ('cash', 'card') then raise exception 'staff:bad_method' using errcode = '22023'; end if;
+  select * into o from public.orders where id = p_id for update;
+  if o.id is null or o.status not in ('paid', 'delivered', 'return_requested', 'return_approved') then raise exception 'staff:conflict' using errcode = '40001'; end if;
+  if p_amount is null or p_amount < 0 or p_amount > greatest(coalesce(o.paid_amount, o.total), 0) then
+    raise exception 'staff:bad_amount' using errcode = '22023';
+  end if;
+  update public.orders set status = 'return_approved', return_reason = left(trim(p_reason), 1000), return_amount = round(p_amount, 2),
+    return_method = p_method, return_approved_at = now(), return_approved_by = me.full_name
+  where id = p_id;
+end $$;
+
+-- Шаг 2. Возврат вручён: вещь у магазина, деньги отданы покупателю; p_restock — вещь снова можно продавать
+create or replace function public.order_return_done(p_id bigint, p_restock boolean)
+returns void language plpgsql volatile security definer set search_path = '' as $$
+declare me public.staff_accounts := public.staff_current(); o public.orders;
+begin
+  if me.id is null then raise exception 'staff:forbidden' using errcode = '42501'; end if;
+  select * into o from public.orders where id = p_id for update;
+  if o.id is null or o.status <> 'return_approved' then raise exception 'staff:conflict' using errcode = '40001'; end if;
+  update public.orders set status = 'returned', returned_at = now(), returned_by = me.full_name,
+    refund_amount = o.return_amount, refund_method = o.return_method, restocked = coalesce(p_restock, false)
+  where id = p_id;
+end $$;
+
 create or replace function public.order_return_decline(p_id bigint, p_message text)
 returns void language plpgsql volatile security definer set search_path = '' as $$
 declare me public.staff_accounts := public.staff_current();
 begin
   if me.id is null then raise exception 'staff:forbidden' using errcode = '42501'; end if;
   if length(trim(coalesce(p_message, ''))) < 3 then raise exception 'staff:empty' using errcode = '22023'; end if;
-  update public.orders set status = 'delivered', return_declined = left(trim(p_message), 1000) where id = p_id and status = 'return_requested';
+  update public.orders set status = 'delivered', return_declined = left(trim(p_message), 1000), return_amount = null, return_method = null,
+    return_approved_at = null, return_approved_by = null where id = p_id and status in ('return_requested', 'return_approved');
   if not found then raise exception 'staff:conflict' using errcode = '40001'; end if;
 end $$;
 
@@ -279,7 +317,7 @@ declare me bigint := public.tg_id(); staff boolean := public.is_staff(); o publi
 begin
   select * into o from public.orders where id = new.order_id;
   if o.id is null or (me is null and not staff) then raise exception 'chat:denied' using errcode = '42501'; end if;
-  if o.status not in ('awaiting_payment', 'paid', 'return_requested') then raise exception 'chat:closed' using errcode = '42501'; end if;
+  if o.status not in ('awaiting_payment', 'paid', 'return_requested', 'return_approved') then raise exception 'chat:closed' using errcode = '42501'; end if;
   if not staff and (select count(*) from public.order_messages
       where user_id = me and created_at > now() - interval '10 minutes') >= 30 then
     raise exception 'chat:too_many' using errcode = '42501';
@@ -296,21 +334,25 @@ begin
   return new;
 end $$;
 
--- Покупателю в Telegram: возврат оформлен или в нём отказано
+-- Покупателю в Telegram: возврат одобрен, вручён или в нём отказано
 create or replace function public.orders_returns_to_bot()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare token text; txt text; local_date timestamp;
   months text[] := array['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
                          'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 begin
-  if new.user_id is null or new.status = old.status or old.status <> 'return_requested' then return null; end if;
+  if new.user_id is null or new.status = old.status then return null; end if;
+  if not (new.status in ('return_approved', 'returned') or (new.status = 'delivered' and old.status in ('return_requested', 'return_approved'))) then return null; end if;
   if to_regclass('vault.decrypted_secrets') is null then return null; end if;
   execute 'select decrypted_secret from vault.decrypted_secrets where name = ''telegram_bot_token'' limit 1' into token;
   if token is null or token = 'ВСТАВЬТЕ_ТОКЕН_БОТА' then return null; end if;
   local_date := new.created_at at time zone 'Europe/Moscow';
   txt := '💬 Менеджер ТЕМП · заказ от ' || extract(day from local_date)::int || ' ' || months[extract(month from local_date)::int] || E'\n\n'
-    || case when new.status = 'returned'
-         then 'Возврат оформлен. Вернём ' || public.rub(new.refund_amount)
+    || case when new.status = 'return_approved'
+         then 'Возврат одобрен. Привезите или отправьте вещь с бирками, и мы вернём ' || public.rub(new.return_amount)
+           || case new.return_method when 'cash' then ' наличными' when 'card' then ' на карту' else '' end || '.'
+       when new.status = 'returned'
+         then 'Возврат вручён: вещь получили, вернули вам ' || public.rub(new.refund_amount)
            || case new.refund_method when 'cash' then ' наличными' when 'card' then ' на карту' else '' end || '.'
          else 'По заказу отказано в возврате: ' || coalesce(new.return_declined, '') end;
   begin
@@ -371,10 +413,10 @@ begin
       'phone', (array_agg(o.phone order by o.id desc) filter (where coalesce(o.phone, '') <> ''))[1],
       'username', (array_agg(to_jsonb(o) ->> 'username' order by o.id desc) filter (where to_jsonb(o) ->> 'username' is not null))[1],
       'orders', count(*),
-      'bought', count(*) filter (where o.status in ('paid', 'delivered', 'return_requested')),
+      'bought', count(*) filter (where o.status in ('paid', 'delivered', 'return_requested', 'return_approved')),
       'returns', count(*) filter (where o.status = 'returned'),
       'spent', coalesce(sum(coalesce(o.paid_amount, o.total) - coalesce(o.refund_amount, 0))
-        filter (where o.status in ('paid', 'delivered', 'return_requested', 'returned')), 0),
+        filter (where o.status in ('paid', 'delivered', 'return_requested', 'return_approved', 'returned')), 0),
       'first_at', min(o.created_at), 'last_at', max(o.created_at),
       'source', (select s.source from public.customer_sources s where s.user_id = o.user_id),
       'tags', coalesce((select t.tags from public.customer_tags t where t.user_id = o.user_id), '{}'),
@@ -449,10 +491,12 @@ end $$;
 
 revoke execute on function public.product_costs_get(), public.product_cost_set(bigint, numeric), public.order_history(bigint),
   public.order_return_request(bigint, text), public.order_return(bigint, text, numeric, text, boolean),
+  public.order_return_approve(bigint, text, numeric, text), public.order_return_done(bigint, boolean),
   public.order_return_decline(bigint, text), public.customer_source_answer(text), public.customer_source_set(bigint, text),
   public.customers_list(), public.customer_card(bigint), public.analytics_orders(date, date), public.export_orders(date, date) from public;
 grant execute on function public.product_costs_get(), public.product_cost_set(bigint, numeric), public.order_history(bigint),
   public.order_return_request(bigint, text), public.order_return(bigint, text, numeric, text, boolean),
+  public.order_return_approve(bigint, text, numeric, text), public.order_return_done(bigint, boolean),
   public.order_return_decline(bigint, text), public.customer_source_answer(text), public.customer_source_set(bigint, text),
   public.customers_list(), public.customer_card(bigint), public.analytics_orders(date, date), public.export_orders(date, date) to anon, authenticated;
 

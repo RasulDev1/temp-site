@@ -8,7 +8,7 @@ import { sheetBody, openSheet } from "./nav.js?v=20261001b";
 const TABS = [["orders", "Заявки"], ["staff", "Сотрудники"]];
 const PERIODS = [["today", "Сегодня"], ["week", "7 дней"], ["month", "Этот месяц"], ["all", "Всё время"], ["custom", "Свой период"]];
 const STATUS = { awaiting_payment: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", cancelled: "Отменён",
-  return_requested: "Просят возврат", returned: "Возврат" };
+  return_requested: "Просят возврат", return_approved: "Возврат одобрен", returned: "Возврат вручён" };
 const PAY_METHOD = { cash: "наличными", card: "картой" };
 
 let tab = "orders";
@@ -36,7 +36,7 @@ function periodRange() {
 }
 
 const applications = (n) => `${n} ${pluralize(n, "заявка", "заявки", "заявок")}`;
-const isPaid = (r) => r.paid != null && ["paid", "delivered", "return_requested", "returned"].includes(r.status);
+const isPaid = (r) => r.paid != null && ["paid", "delivered", "return_requested", "return_approved", "returned"].includes(r.status);
 const net = (r) => (Number(r.paid) || 0) - (Number(r.refund) || 0); // оплачено минус возвращено
 /** Себестоимость проданного: вещь, вернувшаяся на склад, не в расходах */
 const costOf = (r) => (r.status === "returned" && r.restocked ? 0 : Number(r.cost) || 0);

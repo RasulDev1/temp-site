@@ -13,6 +13,7 @@ if (["staff", "tasks", "order"].some((p) => params.has(p)) || /^order_/.test(tel
 } else {
   document.documentElement.classList.toggle("in-telegram", inTelegram);
   fitToPhone();
+  fitHeader();
   setupTelegram();
   initNavigation();
   initShop();
@@ -38,4 +39,21 @@ function fitToPhone() {
   };
   apply();
   addEventListener("resize", apply);
+}
+
+/** Логотип и адрес в шапке — в одну строку и в пределах экрана: если места не хватает, логотип немного уменьшается.
+    Шрифты и размеры экранов у всех разные, поэтому проверяем по факту, а не заранее заданными цифрами. */
+function fitHeader() {
+  const row = document.querySelector(".hero-top"), brand = row?.querySelector(".brand");
+  if (!brand) return;
+  const fit = () => {
+    brand.style.fontSize = "";
+    let size = parseFloat(getComputedStyle(brand).fontSize);
+    while (row.scrollWidth > row.clientWidth + 0.5 && size > 22) brand.style.fontSize = `${--size}px`;
+  };
+  fit();
+  document.fonts?.ready.then(fit);
+  // ширина экрана, шрифт адреса и т. п. поменялись — подгоняем заново
+  if (window.ResizeObserver) new ResizeObserver(() => fit()).observe(row.querySelector(".shop") || row);
+  addEventListener("resize", fit);
 }

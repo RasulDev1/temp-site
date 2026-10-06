@@ -26,7 +26,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .hero-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-width: 0; }
 .brand { font: 900 clamp(38px, calc(12.5vw / var(--fit, 1)), 72px)/.9 var(--display); font-size: clamp(30px, 13.5cqi, 72px); letter-spacing: -.03em; margin: 0; flex: none; }
 .brand .men { font-size: .24em; letter-spacing: .08em; vertical-align: top; margin-left: .35em; background: var(--accent); color: var(--accent-ink); padding: .18em .45em; border-radius: .3em; position: relative; top: .35em; }
-.shop { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; font-style: normal; font-size: clamp(10px, 3.6cqi, 12.5px); line-height: 1.35; color: var(--muted); text-align: right; display: flex; flex-direction: column; gap: 3px; padding-bottom: 4px; }
+.shop { flex: none; font-style: normal; font-size: clamp(10px, 3.6cqi, 12.5px); line-height: 1.35; color: var(--muted); text-align: right; display: flex; flex-direction: column; gap: 3px; padding-bottom: 4px; }
 .shop span:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; } /* город, под ним улица — каждая одной строкой */
 .shop .hours { font-weight: 600; color: var(--ink); background: color-mix(in srgb, var(--accent) 22%, transparent); padding: 2px 7px; border-radius: 6px; align-self: flex-end; }
 .shop .hours i { font-style: normal; white-space: nowrap; display: block; } /* на телефоне — в две строки: плашка ровно по тексту */

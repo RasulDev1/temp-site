@@ -18,7 +18,9 @@ export const imageUrl = (path) => (hasServer ? serverUrl(path) : githubPhotoUrl(
 export const state = {
   catalogProducts: [],  // встроенные (кроме скрытых) и добавленные товары — как их видит администратор
   products: [],         // то, что видит покупатель: без убранных цветов и размеров, с остатками
-  customProducts: [],   // добавленные администратором
+  customProducts: [],   // добавленные администратором (и выставленные, и только на складе)
+  warehouseProducts: [], // склад: все товары, в том числе не выставленные на продажу
+  receipts: [],         // журнал склада: приёмки и исправления количества, новые сверху
   hiddenProductIds: [], // скрытые встроенные товары
   variants: {},         // id → { offColors, offSizes, offCombos }
   stock: {},            // id → { qty: { "цвет|размер": штук } }

@@ -41,6 +41,7 @@ function fromServer(raw) {
     photo: imageUrl(colors[0].image),
     photoPosition: "50% 50%",
     sizes: sizes.length ? sizes : ["One size"],
+    listed: raw.listed !== false, // false — товар есть на складе, но ещё не выставлен на продажу
   };
 }
 
@@ -92,6 +93,7 @@ export function applyCatalog(data) {
   state.hiddenProductIds = (data.hidden || []).map(Number);
   state.variants = data.variants || {};
   state.stock = data.stock || {};
+  state.receipts = Array.isArray(data.receipts) ? data.receipts : [];
   state.staff = Array.isArray(data.staff) ? data.staff : [];
   priceOverrides = data.prices && typeof data.prices === "object" ? data.prices : {};
   productOrder = Array.isArray(data.order) ? data.order.map(Number) : [];
@@ -113,7 +115,10 @@ export function setProductOrder(order) {
 }
 
 export function rebuildCatalog() {
-  state.catalogProducts = sortByOrder(BASE_PRODUCTS.filter((p) => !state.hiddenProductIds.includes(p.id)).concat(state.customProducts).map(withPrice));
+  state.catalogProducts = sortByOrder(BASE_PRODUCTS.filter((p) => !state.hiddenProductIds.includes(p.id))
+    .concat(state.customProducts.filter((p) => p.listed)).map(withPrice));
+  // склад: все товары, в том числе не выставленные на продажу и убранные из каталога
+  state.warehouseProducts = BASE_PRODUCTS.concat(state.customProducts).map(withPrice);
   state.products = state.catalogProducts.map(forCustomers).filter(Boolean);
   if (state.catalogLoaded) fitCartToCatalog();
   emit("catalog");

@@ -117,6 +117,8 @@ function syncCatalogTools() {
 }
 
 /* ---------- Цвета, размеры и остатки: таблица «цвет × размер» ---------- */
+// С Supabase количество ведётся в «Складе»: здесь его не вводят, а только по желанию ограничивают продажу цветов и размеров
+const warehouseMode = () => useSupabase;
 let draft = null;
 const toggle = (set, value) => (set.has(value) ? set.delete(value) : set.add(value));
 const key = (color, size) => `${color}|${size}`;
@@ -149,7 +151,13 @@ function openVariantEditor(id) {
       // цену со скидкой округляем до десятков: 2990 −20% → 2390
       draft.sale = d ? String(Math.max(1, Math.min(base - 1, Math.round(base * (1 - d / 100) / 10) * 10))) : "";
     } else if (t.id === "saveVariants") return saveVariants(t);
-    else if (t.id === "deleteProduct") {
+    else if (t.id === "unlistProduct") {
+      if (!confirmTwice(t, "Точно снять с продажи?")) return;
+      t.disabled = true;
+      const action = p.isCustom ? () => api.setListed(p.id, false) : () => api.setHiddenProducts([...state.hiddenProductIds, p.id]);
+      if (await runAction(action, "Товар снят с продажи, он остался на складе")) backToProducts();
+      return;
+    } else if (t.id === "deleteProduct") {
       if (confirmTwice(t, "Точно удалить весь товар?") && await deleteProduct(p.id)) backToProducts();
       return;
     } else return;
@@ -176,11 +184,20 @@ function openVariantEditor(id) {
 
 const activeColors = () => draft.product.colors.filter((c) => !draft.offColors.has(c));
 const activeSizes = () => draft.product.sizes.filter((s) => !draft.offSizes.has(s));
+/** Сколько штук доступно покупателям с учётом ограничений */
+const saleTotal = () => activeColors().reduce((sum, c) => sum + activeSizes().reduce((n, s) =>
+  n + (draft.offCombos.has(key(c, s)) ? 0 : Math.max(0, Number(draft.qty[key(c, s)]) || 0)), 0), 0);
 const stockTotal = () => activeColors().reduce((sum, c) => sum + activeSizes().reduce((n, s) => n + (Number(draft.qty[key(c, s)]) || 0), 0), 0);
 
 function variantCell(color, size) {
   const d = draft, label = `${colorName(d.product, color)}, ${size}`;
   const wholeOff = d.offColors.has(color) || d.offSizes.has(size);
+  if (warehouseMode()) {
+    const off = wholeOff || d.offCombos.has(key(color, size));
+    const n = d.qty && Object.keys(d.qty).length ? Math.max(0, Number(d.qty[key(color, size)]) || 0) : null;
+    return `<button class="vcell wh-cell${off ? " off" : ""}${n === 0 ? " empty" : ""}" data-off-combo="${key(color, size)}" ${wholeOff ? "disabled" : ""}
+      aria-pressed="${!off}" aria-label="${label}" title="${n == null ? "" : `На складе: ${n} шт.`}">${off ? "—" : n == null ? "✓" : n}</button>`;
+  }
   if (d.trackStock) {
     if (wholeOff) return `<span class="vcell off"></span>`;
     const n = Number(d.qty[key(color, size)]) || 0;
@@ -244,26 +261,29 @@ function renderVariantEditor() {
     <button class="adm-back" id="backToProducts">← ${staffPage() ? "Товары" : "Все товары"}</button>
     <h2 class="p-name">${p.name}</h2>
     ${priceEditorHtml()}
-    <label class="check-line"><input type="checkbox" id="trackStock" ${trackStock ? "checked" : ""}> Вести учёт количества</label>
+    ${warehouseMode() ? `<p class="adm-sub">В клетках — сколько штук на складе. Количество меняется в «Складе». Нажмите на клетку, чтобы не продавать это сочетание
+      (оно останется на складе). Нажмите на цвет или размер, чтобы убрать его целиком.</p>` : `<label class="check-line"><input type="checkbox" id="trackStock" ${trackStock ? "checked" : ""}> Вести учёт количества</label>
     <p class="adm-sub">${trackStock ? `Впишите, сколько штук каждого сочетания на складе. 0 — нет в наличии. ${hasServer || state.costs ? "Остатки уменьшаются сами при каждом заказе и возвращаются при отказе или возврате." : "После продажи уменьшайте остаток здесь вручную."}`
-      : "Нажмите на клетку, чтобы убрать сочетание. Без учёта количества товар продаётся без ограничений."} Нажмите на цвет или размер, чтобы убрать его целиком.</p>
+      : "Нажмите на клетку, чтобы убрать сочетание. Без учёта количества товар продаётся без ограничений."} Нажмите на цвет или размер, чтобы убрать его целиком.</p>`}
     <div class="vwrap"><table class="vtab">
       <thead><tr><th></th>${p.sizes.map((s) => `<th><button class="vhead${draft.offSizes.has(s) ? " off" : ""}" data-off-size="${s}">${s}</button></th>`).join("")}</tr></thead>
       <tbody>${p.colors.map((c) => `<tr><th><button class="vcolor${draft.offColors.has(c) ? " off" : ""}" data-off-color="${c}">
         <i style="background:${swatchBackground(p, c)}"></i><span>${colorName(p, c)}</span></button></th>
         ${p.sizes.map((s) => `<td>${variantCell(c, s)}</td>`).join("")}</tr>`).join("")}</tbody>
     </table></div>
-    ${trackStock ? `<p class="vtotal">Всего на складе: <b id="stockTotal">${stockTotal()}</b> шт.</p>` : ""}
+    ${trackStock ? `<p class="vtotal">${warehouseMode() ? "В продаже" : "Всего на складе"}: <b id="stockTotal">${warehouseMode() ? saleTotal() : stockTotal()}</b> шт.</p>` : ""}
     <p class="hint" id="hint"></p>
     <button class="primary" id="saveVariants">Сохранить</button>
-    <button class="ghost danger" id="deleteProduct">Удалить весь товар</button>`;
+    ${warehouseMode() ? `<button class="ghost" id="unlistProduct">Снять с продажи</button>
+    <p class="adm-sub">Товар пропадёт из каталога, но останется на складе.</p>`
+      : `<button class="ghost danger" id="deleteProduct">Удалить весь товар</button>`}`;
   $("sheet").scrollTop = scroll;
 }
 
 async function saveVariants(button) {
   const { product: p, trackStock } = draft, colors = activeColors(), sizes = activeSizes();
   // При учёте количества роль «убрать сочетание» играет остаток 0
-  const offCombos = trackStock ? [] : [...draft.offCombos].filter((k) => { const [c, s] = k.split("|"); return colors.includes(c) && sizes.includes(s); });
+  const offCombos = trackStock && !warehouseMode() ? [] : [...draft.offCombos].filter((k) => { const [c, s] = k.split("|"); return colors.includes(c) && sizes.includes(s); });
   if (!colors.some((c) => sizes.some((s) => !offCombos.includes(key(c, s))))) {
     $("hint").textContent = "Должно остаться хотя бы одно сочетание цвета и размера. Чтобы убрать всё, удалите товар целиком.";
     return haptic("medium");
@@ -287,10 +307,39 @@ async function saveVariants(button) {
       if (cost) state.costs[p.id] = cost; else delete state.costs[p.id];
     }
     await api.setVariants(p.id, { offColors: [...draft.offColors], offSizes: [...draft.offSizes], offCombos });
-    await api.setStock(p.id, qty);
+    if (!warehouseMode()) await api.setStock(p.id, qty);
   }, "Изменения сохранены");
   if (saved) backToProducts();
   else { button.disabled = false; button.textContent = "Сохранить"; }
+}
+
+/* ---------- «+ Добавить» со склада: в каталог попадает только то, что принято на склад ---------- */
+const warehouseTotal = (p) => { const q = state.stock[p.id]?.qty; return q ? Object.values(q).reduce((n, v) => n + Math.max(0, Number(v) || 0), 0) : null; };
+const notOnSale = () => state.warehouseProducts.filter((p) => (p.isCustom ? !p.listed : state.hiddenProductIds.includes(p.id)));
+
+function openFromWarehouse() {
+  const list = notOnSale();
+  sheetBody.innerHTML = `<div class="grab"></div>
+    <button class="adm-back" id="backToProducts">← Товары</button>
+    <h2 class="p-name">Добавить товар в каталог</h2>
+    <p class="adm-sub">Выставить на продажу можно только то, что есть на складе. Новый товар сначала примите в «Склад».</p>
+    ${list.length ? list.map((p) => { const n = warehouseTotal(p); return productRow(p, `<button class="adm-del" data-list="${p.id}" ${n === 0 ? "title=\"На складе 0 шт.\"" : ""}>Выставить</button>`)
+      .replace(`<p class="s">${productSummary(p)}</p>`, `<p class="s">${formatPrice(p.price)} · ${n == null ? "количество не заведено" : `на складе ${n} шт.`}</p>`); }).join("")
+      : `<p class="adm-sub" style="margin-top:12px">На складе нет товаров, которые ещё не продаются.</p>`}
+    <button class="ghost" id="toWarehouse">Открыть «Склад»</button>`;
+  sheetBody.onclick = async (e) => {
+    const t = e.target, listBtn = t.closest("[data-list]");
+    if (t.id === "backToProducts") return backToProducts();
+    if (t.id === "toWarehouse") return state.openWarehouse?.();
+    if (!listBtn) return;
+    listBtn.disabled = true;
+    const id = Number(listBtn.dataset.list), p = state.warehouseProducts.find((x) => x.id === id);
+    const action = p.isCustom ? () => api.setListed(id, true) : () => api.setHiddenProducts(state.hiddenProductIds.filter((x) => x !== id));
+    // сразу открываем товар: можно ограничить продажу отдельных цветов и размеров
+    if (await runAction(action, "Товар выставлен на продажу")) openVariantEditor(id);
+    else listBtn.disabled = false;
+  };
+  openSheet("adminFromWarehouse", backTarget());
 }
 
 /* ---------- Новый товар ---------- */
@@ -349,7 +398,7 @@ function renderColorRows() {
 }
 
 /** Уменьшает фото до 1400 px и переводит в JPEG — каталог грузится быстрее */
-function compressPhoto(file, maxSide = 1400) {
+export function compressPhoto(file, maxSide = 1400) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
@@ -393,7 +442,7 @@ export function initAdminProducts(guard = (open) => open()) {
   // у сотрудника «Товары» показывают каталог на странице; список товаров во всплывающем окне — для старого входа администратора
   $("adminProductsButton").onclick = () => { haptic(); staffPage() ? closeSheet() : guard(openAdminProducts); };
   $("addProductButton").hidden = false;
-  $("addProductButton").onclick = () => { haptic(); guard(openNewProductForm); };
+  $("addProductButton").onclick = () => { haptic(); guard(warehouseMode() ? openFromWarehouse : openNewProductForm); };
   $("hiddenProductsButton").onclick = () => { haptic(); guard(openHiddenProducts); };
   state.editProduct = (id) => guard(() => openVariantEditor(id)); // нажатие на карточку в каталоге
   // закупочные цены (supabase-crm.sql); без настройки поле не показываем
@@ -403,5 +452,6 @@ export function initAdminProducts(guard = (open) => open()) {
     syncCatalogTools();
     if (state.view === "admin") openAdminProducts();
     if (state.view === "adminHidden") openHiddenProducts();
+    if (state.view === "adminFromWarehouse") openFromWarehouse();
   });
 }

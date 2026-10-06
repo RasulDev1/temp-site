@@ -10,9 +10,9 @@ import { openTaskForm, tasksListHtml, handleTaskTap, deleteTask } from "./admin-
 const TAGS = ["Постоянный", "VIP", "Опт", "Проблемный"];
 const SORTS = [["recent", "Недавние"], ["spent", "Больше купили"], ["sleeping", "Давно не покупали"]];
 const STATUS = { new: "Новый", awaiting_payment: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", cancelled: "Отменён",
-  return_requested: "Просит возврат", returned: "Возврат" };
+  return_requested: "Просит возврат", return_approved: "Возврат одобрен", returned: "Возврат вручён" };
 const SOURCES = ["Instagram", "ВКонтакте", "Telegram", "Авито", "Посоветовали друзья", "Увидел магазин", "Другое"];
-const SOLD = ["paid", "delivered", "return_requested", "returned"];
+const SOLD = ["paid", "delivered", "return_requested", "return_approved", "returned"];
 const PAY_METHOD = { cash: "наличными", card: "картой" };
 const ERRORS = {
   no_function: "Клиенты не настроены: в Supabase нужно запустить supabase-customers.sql",

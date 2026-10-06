@@ -118,8 +118,8 @@ export async function staffLogout() {
   forgetStaff();
 }
 
-/* В базе статусы new · awaiting_payment · paid · delivered · cancelled · return_requested · returned;
-   в интерфейсе — new · accepted · paid · delivered · rejected · return_requested · returned */
+/* В базе статусы new · awaiting_payment · paid · delivered · cancelled · return_requested · return_approved · returned;
+   в интерфейсе — new · accepted · paid · delivered · rejected · return_requested · return_approved · returned */
 const STATUS = { awaiting_payment: "accepted", cancelled: "rejected" };
 const toOrder = (r) => ({
   num: r.id, status: STATUS[r.status] || r.status, date: r.created_at,
@@ -132,6 +132,9 @@ const toOrder = (r) => ({
   deliveredAt: r.delivered_at || null,
   returnRequest: r.return_request_reason ? { reason: r.return_request_reason, at: r.return_requested_at } : null,
   returnDeclined: r.return_declined || "",
+  // возврат одобрен: сколько и как вернём, ждём вещь
+  returnApproved: r.return_approved_at ? { reason: r.return_reason || "", at: r.return_approved_at, by: r.return_approved_by || "",
+    amount: Number(r.return_amount) || 0, method: r.return_method } : null,
   refund: r.returned_at ? { reason: r.return_reason || "", at: r.returned_at, by: r.returned_by || "",
     amount: Number(r.refund_amount) || 0, method: r.refund_method, restocked: Boolean(r.restocked) } : null,
 });
@@ -228,6 +231,8 @@ export const supabaseApi = {
   returnRequest: (num, reason) => rpc("order_return_request", { p_id: num, p_reason: reason }),
   returnOrder: (num, reason, amount, method, restock) =>
     rpc("order_return", { p_id: num, p_reason: reason, p_amount: amount, p_method: method, p_restock: Boolean(restock) }),
+  returnApprove: (num, reason, amount, method) => rpc("order_return_approve", { p_id: num, p_reason: reason, p_amount: amount, p_method: method }),
+  returnDone: (num, restock) => rpc("order_return_done", { p_id: num, p_restock: Boolean(restock) }),
   returnDecline: (num, message) => rpc("order_return_decline", { p_id: num, p_message: message }),
   productCosts: () => rpc("product_costs_get"),
   productCostSet: (id, cost) => rpc("product_cost_set", { p_id: id, p_cost: cost || null }),
@@ -316,6 +321,11 @@ async function readCatalog() {
   return data || { data: {}, version: 0 };
 }
 
+/** Запись в журнал склада; хранятся последние 300 */
+function logStock(c, entry) {
+  c.receipts = [{ at: Date.now(), by: staffSession?.name || "", ...entry }, ...(Array.isArray(c.receipts) ? c.receipts : [])].slice(0, 300);
+}
+
 /** Читает каталог из базы, применяет изменение и сохраняет. Если кто-то сохранил раньше — повтор. */
 async function updateCatalog(change) {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -378,6 +388,40 @@ export const supabaseCatalogApi = {
     }
     return updateCatalog((c) => { c.products.push({ num, createdAt: num, ...product, colors }); });
   },
+  /* ---------- Склад: приёмка и количество (остатки — в c.stock, журнал — в c.receipts) ---------- */
+  /** Новый товар на склад: те же данные, что у товара в каталоге, плюс количество по цветам и размерам. На продажу не выставлен. */
+  async warehouseCreate(product, qty) {
+    const num = Date.now();
+    const colors = [];
+    for (const [i, color] of product.colors.entries()) {
+      colors.push({ ...color, image: await uploadPhoto(`${num}-${i}.jpg`, color.image) });
+    }
+    await updateCatalog((c) => {
+      c.products.push({ num, createdAt: num, ...product, colors, listed: false });
+      c.stock[num] = { qty };
+      logStock(c, { id: num, name: product.name, kind: "new", qty });
+    });
+    return num;
+  },
+  /** Принять ещё: add — сколько штук пришло { "цвет|размер": n }; all — все сочетания товара (недостающие станут 0) */
+  stockReceive: (id, name, add, all) => updateCatalog((c) => {
+    const qty = { ...Object.fromEntries(all.map((k) => [k, 0])), ...c.stock[id]?.qty };
+    for (const [k, n] of Object.entries(add)) qty[k] = (Number(qty[k]) || 0) + n;
+    c.stock[id] = { qty };
+    logStock(c, { id, name, kind: "in", qty: add });
+  }),
+  /** Исправить количество (пересчёт, списание): qty — сколько стало; в журнал — разница */
+  stockSet: (id, name, qty) => updateCatalog((c) => {
+    const before = c.stock[id]?.qty || {};
+    const diff = Object.fromEntries(Object.keys(qty).map((k) => [k, qty[k] - (Number(before[k]) || 0)]).filter(([, n]) => n));
+    c.stock[id] = { qty };
+    if (Object.keys(diff).length) logStock(c, { id, name, kind: "fix", qty: diff });
+  }),
+  /** Выставить товар со склада на продажу или снять с продажи (он остаётся на складе) */
+  setListed: (id, listed) => updateCatalog((c) => {
+    const p = c.products.find((x) => x.num === id);
+    if (p) p.listed = listed;
+  }),
   async deleteProduct(id) {
     let removed;
     await updateCatalog((c) => {

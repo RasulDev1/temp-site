@@ -4,9 +4,9 @@ import { api } from "./state.js?v=20261001b";
 
 const LIBRARY = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
 const STATUS = { new: "Новый", awaiting_payment: "Ждёт оплаты", paid: "Оплачен", delivered: "Вручён", cancelled: "Отказ",
-  return_requested: "Просят возврат", returned: "Возврат" };
+  return_requested: "Просят возврат", return_approved: "Возврат одобрен", returned: "Возврат вручён" };
 const METHOD = { cash: "Наличные", card: "Карта" };
-const SOLD = ["paid", "delivered", "return_requested", "returned"];
+const SOLD = ["paid", "delivered", "return_requested", "return_approved", "returned"];
 
 function loadLibrary() {
   if (window.XLSX) return Promise.resolve(true);

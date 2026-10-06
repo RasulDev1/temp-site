@@ -111,7 +111,7 @@
 .admin-btn.drag-ghost { cursor: grabbing; box-shadow: 0 10px 24px rgba(5,15,25,.25); }
 
 /* Возвраты: статусы, форма покупателя с правилами, ответы на «Откуда вы о нас узнали?» */
-.st-return_requested .ord-st { background: var(--accent); color: var(--accent-ink); }
+.st-return_requested .ord-st, .st-return_approved .ord-st { background: var(--accent); color: var(--accent-ink); }
 .st-returned .ord-st { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
 .sources { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 8px; }
 .sources .chip:disabled { opacity: .4; }

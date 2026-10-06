@@ -1,6 +1,6 @@
 // «Аналитика» (только директор): оформленные заявки за выбранный период, продажи и работа каждого сотрудника.
 // Заявка оформлена, когда сотрудник её принял; продажи — сколько по этим заявкам оплачено кнопкой «Оплатить»,
-// за вычетом возвратов. Прибыль — продажи минус закупочная цена проданных вещей (если она указана в «Товарах»).
+// за вычетом возвратов. Выручка — продажи минус закупочная цена проданных вещей (если она указана в «Товарах» или «Складе»).
 import { $, formatPrice, formatDate, escapeHtml, pluralize, haptic, toast } from "./core.js?v=20261001b";
 import { state, api } from "./state.js?v=20261001b";
 import { sheetBody, openSheet } from "./nav.js?v=20261001b";
@@ -61,14 +61,14 @@ function summaryHtml(list) {
   return `<div class="an-grid an-top">
       <div class="an-total"><span>Продаж</span><b>${formatPrice(s.turnover)}</b><small>оплачено ${s.paidCount} из ${s.count}</small></div>
       <div class="an-total"><span>Заявок</span><b>${s.count}</b><small>${s.waitingCount ? `ждут оплаты ${s.waitingCount} на ${formatPrice(s.waitingSum)}` : "все оплачены"}</small></div>
-      ${s.withCost ? `<div class="an-total"><span>Прибыль</span><b>${formatPrice(Math.round(s.profit))}</b><small>${s.withCost === s.paidCount
-        ? `маржа ${s.turnover ? Math.round(s.profit / s.turnover * 100) : 0}%` : `по ${s.withCost} из ${s.paidCount}: у остальных нет закупочной цены`}</small></div>` : ""}
+      ${s.withCost ? `<div class="an-total"><span>Выручка</span><b>${formatPrice(Math.round(s.profit))}</b><small>${s.withCost === s.paidCount
+        ? `продажи минус закупка · ${s.turnover ? Math.round(s.profit / s.turnover * 100) : 0}% от продаж` : `по ${s.withCost} из ${s.paidCount}: у остальных нет закупочной цены`}</small></div>` : ""}
       ${s.refundCount || s.requests ? `<div class="an-total"><span>Возвраты</span><b>${formatPrice(s.refunds)}</b><small>${[
         s.refundCount && `${s.refundCount} ${pluralize(s.refundCount, "заказ", "заказа", "заказов")}`,
         s.requests && `ждут решения ${s.requests}`].filter(Boolean).join(" · ")}</small></div>` : ""}
     </div>
     ${s.turnover ? `<p class="adm-sub an-split">Наличными ${formatPrice(s.cash)} · картой ${formatPrice(s.card)}${
-      s.paidCount && !s.withCost ? " · чтобы видеть прибыль, укажите закупочные цены в «Товарах»" : ""}</p>` : ""}`;
+      s.paidCount && !s.withCost ? " · чтобы видеть выручку, укажите закупочные цены в «Товарах» или при приёмке на «Склад»" : ""}</p>` : ""}`;
 }
 
 /** Откуда пришли покупатели заявок за период (ответ при первом заказе или отметка в карточке клиента) */

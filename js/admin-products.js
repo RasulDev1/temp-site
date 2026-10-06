@@ -219,7 +219,7 @@ function pricePreview() {
 /** Наценка с закупочной цены: сколько магазин зарабатывает с одной вещи */
 function costPreview() {
   const cost = Number(String(draft.cost).replace(",", ".")) || 0, price = Math.round(Number(draft.sale)) || Math.round(Number(draft.price)) || 0;
-  if (!cost) return "Укажите, за сколько закупаете вещь: тогда в «Аналитике» будет видна прибыль.";
+  if (!cost) return "Укажите, за сколько закупаете вещь: тогда в «Аналитике» и на «Главной» будет видна выручка (продажа минус закупка).";
   if (!price) return "";
   const margin = price - cost;
   return `С одной вещи: <b>${formatPrice(Math.round(margin))}</b> (${margin >= 0 ? "наценка" : "убыток"} ${Math.round(Math.abs(margin) / cost * 100)}%)`;

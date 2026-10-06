@@ -36,7 +36,7 @@ function ordersSheet(orders) {
       "Оплачено": num(o.paid), "Способ оплаты": METHOD[o.method] || "", "Дата оплаты": moscow(o.paid_at),
       "Менеджер": o.manager || "", "Вручён": moscow(o.delivered_at),
       "Возвращено": num(o.refund), "Причина возврата": o.return_reason || "",
-      "Выручка": revenue, "Себестоимость": sold ? cost : "", "Прибыль": sold && cost !== "" ? revenue - cost : "",
+      "Продажа": revenue, "Закупочная стоимость": sold ? cost : "", "Выручка": sold && cost !== "" ? revenue - cost : "",
     };
   });
 }

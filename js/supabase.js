@@ -130,6 +130,7 @@ const toOrder = (r) => ({
   user: { id: r.user_id, username: r.username },
   // возврат (supabase-crm.sql): просьба покупателя, отказ менеджера и оформленный возврат
   deliveredAt: r.delivered_at || null,
+  costTotal: r.cost_total != null ? Number(r.cost_total) : null, // закупочная стоимость вещей на момент оплаты
   returnRequest: r.return_request_reason ? { reason: r.return_request_reason, at: r.return_requested_at } : null,
   returnDeclined: r.return_declined || "",
   // возврат одобрен: сколько и как вернём, ждём вещь

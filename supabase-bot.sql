@@ -17,7 +17,7 @@ create extension if not exists pg_net;
 -- Адрес магазина — для кнопок «Открыть заказ» в сообщениях бота
 create or replace function public.bot_shop_url()
 returns text language sql immutable set search_path = '' as $$
-  select 'https://rasuldev1.github.io/temp-site/'
+  select 'https://rasuldev1.github.io/vexa/'
 $$;
 
 -- Какой заказ покупатель выбрал в боте («Мои заказы» → нажал на заказ): туда уходят его следующие сообщения

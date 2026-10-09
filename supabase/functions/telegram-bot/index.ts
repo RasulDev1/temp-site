@@ -13,7 +13,7 @@ import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 const TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 const SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET") ?? "";
-const SHOP_URL = Deno.env.get("SHOP_URL") ?? "https://rasuldev1.github.io/temp-site/";
+const SHOP_URL = Deno.env.get("SHOP_URL") ?? "https://rasuldev1.github.io/vexa/";
 const MAX_FILE = 3 * 1024 * 1024; // как в чате на сайте
 const FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 

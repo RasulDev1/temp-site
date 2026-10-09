@@ -39,6 +39,8 @@ function fromServer(raw) {
     colorNames: Object.fromEntries(colors.map((c) => [hex(c), escapeHtml(c.name || hex(c))])),
     colorPhotos: Object.fromEntries(colors.map((c) => [hex(c), imageUrl(c.image)])),
     photo: imageUrl(colors[0].image),
+    // уменьшенные копии для каталога и корзины (есть у товаров, добавленных после 09.10.2026)
+    thumbs: Object.fromEntries(colors.filter((c) => c.thumb).map((c) => [imageUrl(c.image), imageUrl(c.thumb)])),
     photoPosition: "50% 50%",
     sizes: sizes.length ? sizes : ["One size"],
     listed: raw.listed !== false, // false — товар есть на складе, но ещё не выставлен на продажу

@@ -4,52 +4,55 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>VEXA — мужская спортивная одежда</title>
-<link rel="stylesheet" href="css/app.css?v=20261009b">
-<link rel="stylesheet" href="css/chat.css?v=20261009b">
-<link rel="stylesheet" href="css/orders.css?v=20261009b">
-<!-- Шрифты грузятся без блокировки: пока их нет, работает системный шрифт -->
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&family=Manrope:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/app.css?v=20261009c">
+<link rel="stylesheet" href="css/chat.css?v=20261009c">
+<link rel="stylesheet" href="css/orders.css?v=20261009c">
+<!-- Шрифты лежат на сайте (fonts/); кириллицу просим сразу, чтобы текст не перерисовывался -->
+<link rel="stylesheet" href="css/fonts.css?v=20261009c">
+<link rel="preload" href="fonts/manrope-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/unbounded-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<!-- Соединение с базой открываем заранее, пока грузятся скрипты -->
+<link rel="preconnect" href="https://ztcltngfpnhhuzyyqnfw.supabase.co" crossorigin>
 <!-- API мини-приложения Telegram -->
 <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-<!-- Supabase JS SDK 2.49.4 (заказы, роли, Realtime). Файл кладёт деплой (.github/workflows/deploy.yml):
-     CDN у части покупателей недоступен без VPN. Если файла нет, js/supabase.js подгрузит библиотеку с CDN. -->
+<!-- Supabase JS SDK 2.49.4 (заказы, роли, Realtime) лежит на самом сайте: CDN у части покупателей недоступен без VPN.
+     Если файла вдруг нет, js/supabase.js подгрузит библиотеку с CDN. -->
 <script src="js/vendor/supabase.js" defer></script>
 <!-- Свежие версии скриптов: модули ссылаются друг на друга с ?v=20261001b, а карта подменяет адрес на новый.
      При следующем обновлении сайта достаточно поменять версию справа (и у main.js ниже) — браузер и Telegram скачают файлы заново. -->
 <script type="importmap">
 {
   "imports": {
-    "./js/cart.js?v=20261001b": "./js/cart.js?v=20261009b",
-    "./js/catalog.js?v=20261001b": "./js/catalog.js?v=20261009b",
-    "./js/chat.js?v=20261001b": "./js/chat.js?v=20261009b",
-    "./js/config.js?v=20261001b": "./js/config.js?v=20261009b",
-    "./js/core.js?v=20261001b": "./js/core.js?v=20261009b",
-    "./js/data.js?v=20261001b": "./js/data.js?v=20261009b",
-    "./js/github.js?v=20261001b": "./js/github.js?v=20261009b",
-    "./js/main.js?v=20261001b": "./js/main.js?v=20261009b",
-    "./js/nav.js?v=20261001b": "./js/nav.js?v=20261009b",
-    "./js/photos.js?v=20261001b": "./js/photos.js?v=20261009b",
-    "./js/shop.js?v=20261001b": "./js/shop.js?v=20261009b",
-    "./js/reviews.js?v=20261001b": "./js/reviews.js?v=20261009b",
-    "./js/state.js?v=20261001b": "./js/state.js?v=20261009b",
-    "./js/supabase.js?v=20261001b": "./js/supabase.js?v=20261009b"
+    "./js/cart.js?v=20261001b": "./js/cart.js?v=20261009c",
+    "./js/catalog.js?v=20261001b": "./js/catalog.js?v=20261009c",
+    "./js/chat.js?v=20261001b": "./js/chat.js?v=20261009c",
+    "./js/config.js?v=20261001b": "./js/config.js?v=20261009c",
+    "./js/core.js?v=20261001b": "./js/core.js?v=20261009c",
+    "./js/data.js?v=20261001b": "./js/data.js?v=20261009c",
+    "./js/github.js?v=20261001b": "./js/github.js?v=20261009c",
+    "./js/main.js?v=20261001b": "./js/main.js?v=20261009c",
+    "./js/nav.js?v=20261001b": "./js/nav.js?v=20261009c",
+    "./js/photos.js?v=20261001b": "./js/photos.js?v=20261009c",
+    "./js/shop.js?v=20261001b": "./js/shop.js?v=20261009c",
+    "./js/reviews.js?v=20261001b": "./js/reviews.js?v=20261009c",
+    "./js/state.js?v=20261001b": "./js/state.js?v=20261009c",
+    "./js/supabase.js?v=20261001b": "./js/supabase.js?v=20261009c"
   }
 }
 </script>
-<script type="module" src="js/main.js?v=20261009b"></script>
-<link rel="modulepreload" href="js/config.js?v=20261009b">
-<link rel="modulepreload" href="js/core.js?v=20261009b">
-<link rel="modulepreload" href="js/data.js?v=20261009b">
-<link rel="modulepreload" href="js/state.js?v=20261009b">
-<link rel="modulepreload" href="js/catalog.js?v=20261009b">
-<link rel="modulepreload" href="js/photos.js?v=20261009b">
-<link rel="modulepreload" href="js/nav.js?v=20261009b">
-<link rel="modulepreload" href="js/shop.js?v=20261009b">
-<link rel="modulepreload" href="js/cart.js?v=20261009b">
-<link rel="modulepreload" href="js/github.js?v=20261009b">
-<link rel="modulepreload" href="js/supabase.js?v=20261009b">
-<link rel="modulepreload" href="js/chat.js?v=20261009b">
+<script type="module" src="js/main.js?v=20261009c"></script>
+<link rel="modulepreload" href="js/config.js?v=20261009c">
+<link rel="modulepreload" href="js/core.js?v=20261009c">
+<link rel="modulepreload" href="js/data.js?v=20261009c">
+<link rel="modulepreload" href="js/state.js?v=20261009c">
+<link rel="modulepreload" href="js/catalog.js?v=20261009c">
+<link rel="modulepreload" href="js/photos.js?v=20261009c">
+<link rel="modulepreload" href="js/nav.js?v=20261009c">
+<link rel="modulepreload" href="js/shop.js?v=20261009c">
+<link rel="modulepreload" href="js/cart.js?v=20261009c">
+<link rel="modulepreload" href="js/github.js?v=20261009c">
+<link rel="modulepreload" href="js/supabase.js?v=20261009c">
+<link rel="modulepreload" href="js/chat.js?v=20261009c">
 </head>
 <body>
 <div class="wrap">

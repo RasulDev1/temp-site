@@ -2,14 +2,15 @@
 import { reducedMotion } from "./core.js?v=20261001b";
 import { colorName } from "./catalog.js?v=20261001b";
 
-/** Уменьшенная копия *-thumb.jpg есть только у встроенных фото: в img/products/ и в корне сайта */
+/** Уменьшенная копия *-thumb.jpg есть у встроенных фото (в img/products/ и в корне сайта);
+    у добавленных товаров — своя, её адрес в product.thumbs. Нет копии — показываем полное фото. */
 const hasThumbnail = (url) => /\.jpg$/.test(url) && (url.startsWith("img/products/") || !url.includes("/"));
-const thumbnailOf = (url) => (hasThumbnail(url) ? url.replace(/\.jpg$/, "-thumb.jpg") : url);
+const thumbnailOf = (product, url) => product.thumbs?.[url] || (hasThumbnail(url) ? url.replace(/\.jpg$/, "-thumb.jpg") : url);
 const photoUrl = (product, color) => product.colorPhotos?.[color] || product.photo;
 
 /** <img> товара. thumb — для каталога и корзины. */
 export function productImage(product, color, { thumb = false, lazy = false } = {}) {
-  const url = thumb ? thumbnailOf(photoUrl(product, color)) : photoUrl(product, color);
+  const url = thumb ? thumbnailOf(product, photoUrl(product, color)) : photoUrl(product, color);
   return `<img class="ph" src="${url}" alt="${product.name}${color ? ", " + colorName(product, color) : ""}"
     style="object-position:${product.photoPosition}" decoding="async"${lazy ? ' loading="lazy"' : ""}>`;
 }

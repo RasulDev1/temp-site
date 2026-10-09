@@ -2,7 +2,7 @@
 // Запросы анонимные (publishable key), а в каждом едет заголовок X-Telegram-Init-Data —
 // подписанные Telegram данные с ID пользователя. База сама проверяет подпись токеном бота
 // и по правилам RLS решает, кому что видно: покупателю — свои заказы, персоналу — все.
-// Библиотеку supabase-js кладёт на сайт деплой (js/vendor/supabase.js, см. .github/workflows/deploy.yml);
+// Библиотека supabase-js лежит на самом сайте (js/vendor/supabase.js, версия 2.49.4);
 // если её там нет, она подгружается с CDN.
 import { telegram, storage } from "./core.js?v=20261001b";
 import { SUPABASE_URL, SUPABASE_KEY } from "./config.js?v=20261001b";
@@ -354,6 +354,29 @@ async function uploadPhoto(name, dataUrl) {
   return db().storage.from(PHOTO_BUCKET).getPublicUrl(name).data.publicUrl;
 }
 
+/** Уменьшенная копия фото для каталога и корзины: карточка узкая, полное фото (до 1400 px) ей не нужно */
+function thumbnailDataUrl(dataUrl, maxSide = 560) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = Object.assign(document.createElement("canvas"), {
+        width: Math.round(image.naturalWidth * scale), height: Math.round(image.naturalHeight * scale) });
+      canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    image.onerror = reject;
+    image.src = dataUrl;
+  });
+}
+
+/** Фото цвета и его уменьшенная копия; копия не получилась — товар сохраняется и без неё */
+async function uploadColorPhotos(num, i, color) {
+  const image = await uploadPhoto(`${num}-${i}.jpg`, color.image);
+  const thumb = await thumbnailDataUrl(color.image).then((small) => uploadPhoto(`${num}-${i}-thumb.jpg`, small)).catch(() => null);
+  return thumb ? { ...color, image, thumb } : { ...color, image };
+}
+
 async function deletePhoto(url) {
   const name = String(url).split(`/object/public/${PHOTO_BUCKET}/`)[1];
   if (name) await db().storage.from(PHOTO_BUCKET).remove([decodeURIComponent(name)]).catch(() => {});
@@ -385,7 +408,7 @@ export const supabaseCatalogApi = {
     const num = Date.now();
     const colors = [];
     for (const [i, color] of product.colors.entries()) {
-      colors.push({ ...color, image: await uploadPhoto(`${num}-${i}.jpg`, color.image) });
+      colors.push(await uploadColorPhotos(num, i, color));
     }
     return updateCatalog((c) => { c.products.push({ num, createdAt: num, ...product, colors }); });
   },
@@ -395,7 +418,7 @@ export const supabaseCatalogApi = {
     const num = Date.now();
     const colors = [];
     for (const [i, color] of product.colors.entries()) {
-      colors.push({ ...color, image: await uploadPhoto(`${num}-${i}.jpg`, color.image) });
+      colors.push(await uploadColorPhotos(num, i, color));
     }
     await updateCatalog((c) => {
       c.products.push({ num, createdAt: num, ...product, colors, listed: false });
@@ -433,7 +456,10 @@ export const supabaseCatalogApi = {
       if (c.prices) delete c.prices[id];
       if (c.order) c.order = c.order.filter((x) => x !== id);
     });
-    for (const color of removed?.colors || []) await deletePhoto(color.image);
+    for (const color of removed?.colors || []) {
+      await deletePhoto(color.image);
+      if (color.thumb) await deletePhoto(color.thumb);
+    }
   },
 };
 

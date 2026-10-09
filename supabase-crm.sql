@@ -1,5 +1,5 @@
 -- =====================================================================
---  ТЕМП · CRM: история заказа, возвраты, закупочные цены и прибыль, списание остатков, откуда пришёл клиент
+--  VEXA · CRM: история заказа, возвраты, закупочные цены и прибыль, списание остатков, откуда пришёл клиент
 --  Запускать ПОСЛЕ supabase-staff.sql, supabase-catalog.sql, supabase-payments.sql и supabase-customers.sql.
 --  Supabase → SQL Editor → новая вкладка (New query) → вставить ЦЕЛИКОМ → Run.
 --  Можно запускать повторно. Заказы, каталог и клиенты не удаляются.
@@ -347,7 +347,7 @@ begin
   execute 'select decrypted_secret from vault.decrypted_secrets where name = ''telegram_bot_token'' limit 1' into token;
   if token is null or token = 'ВСТАВЬТЕ_ТОКЕН_БОТА' then return null; end if;
   local_date := new.created_at at time zone 'Europe/Moscow';
-  txt := '💬 Менеджер ТЕМП · заказ от ' || extract(day from local_date)::int || ' ' || months[extract(month from local_date)::int] || E'\n\n'
+  txt := '💬 Менеджер VEXA · заказ от ' || extract(day from local_date)::int || ' ' || months[extract(month from local_date)::int] || E'\n\n'
     || case when new.status = 'return_approved'
          then 'Возврат одобрен. Привезите или отправьте вещь с бирками, и мы вернём ' || public.rub(new.return_amount)
            || case new.return_method when 'cash' then ' наличными' when 'card' then ' на карту' else '' end || '.'

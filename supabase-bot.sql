@@ -1,5 +1,5 @@
 -- =====================================================================
---  ТЕМП · переписка по заказу и в Telegram-боте, синхронно с сайтом
+--  VEXA · переписка по заказу и в Telegram-боте, синхронно с сайтом
 --  Запускать ПОСЛЕ supabase-chat.sql и supabase-staff.sql.
 --  Supabase → SQL Editor → новая вкладка (New query) → вставить ЦЕЛИКОМ → Run.
 --  Можно запускать повторно.
@@ -100,7 +100,7 @@ begin
   if owner is null or token is null or token = 'ВСТАВЬТЕ_ТОКЕН_БОТА' then return null; end if;
   local_date := created at time zone 'Europe/Moscow'; -- дата по времени магазина (Краснодар)
   -- покупателю — без номера заказа: «заказ от 3 октября»
-  txt := '💬 Менеджер ТЕМП · заказ от ' || extract(day from local_date)::int || ' ' || months[extract(month from local_date)::int]
+  txt := '💬 Менеджер VEXA · заказ от ' || extract(day from local_date)::int || ' ' || months[extract(month from local_date)::int]
       || case when coalesce(new.body, '') <> '' then E'\n\n' || new.body else '' end
       || case when new.file_name is not null
               then E'\n\n📎 Менеджер прислал файл «' || new.file_name || '» — его можно открыть в магазине, в чате заказа.' else '' end

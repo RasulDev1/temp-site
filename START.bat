@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title ТЕМП MEN — магазин
+title VEXA MEN — магазин
 
 set "NODE="
 where node >nul 2>nul && set "NODE=node"

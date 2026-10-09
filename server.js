@@ -1,4 +1,4 @@
-// ТЕМП MEN — сервер для Telegram Mini App.
+// VEXA MEN — сервер для Telegram Mini App.
 // Отдаёт приложение, хранит каталог и фото, пускает в управление товарами
 // только тех, чей Telegram ID указан в ADMIN_IDS.
 // Нужен только Node.js 18+, без сторонних пакетов.
@@ -480,7 +480,7 @@ const server = http.createServer(async (req, res) => {
 
 netproxy.detectProxy(process.env.PROXY).then((p) => { if (p) console.log(`Запросы к Telegram идут через прокси ${p.url} (${p.source})`); });
 server.listen(PORT, () => {
-  console.log(`ТЕМП MEN работает на http://localhost:${PORT}`);
+  console.log(`VEXA MEN работает на http://localhost:${PORT}`);
   console.log(`Администраторы (Telegram ID): ${[...ADMIN_IDS].join(", ") || "не заданы"}`);
   botLoop();
   setMenuButton();
@@ -511,7 +511,7 @@ async function botLoop() {
         if (!m || !m.from || m.from.is_bot || m.chat.type !== "private") continue;
         const admin = ADMIN_IDS.has(String(m.from.id));
         const text = [
-          "Здравствуйте! Это ТЕМП MEN — мужская одежда для бега, зала и улицы.",
+          "Здравствуйте! Это VEXA MEN — мужская одежда для бега, зала и улицы.",
           "Откройте магазин кнопкой ниже, выберите товары и оформите заказ.",
           "Реквизиты для оплаты пришлём сюда, когда подтвердим наличие.",
           admin ? "\nВы администратор: в магазине доступны «Управление товарами» и «Заказы»." : "",

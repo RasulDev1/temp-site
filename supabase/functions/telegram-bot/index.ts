@@ -1,4 +1,4 @@
-// ТЕМП · Telegram-бот магазина (Supabase Edge Function «telegram-bot»).
+// VEXA · Telegram-бот магазина (Supabase Edge Function «telegram-bot»).
 // Принимает сообщения покупателей от Telegram и кладёт их в чат заказа на сайте; на /start — кнопки магазина.
 // Ответы менеджера с сайта бот отправляет сам из базы (supabase-bot.sql), эта функция для них не нужна.
 // Менеджер отправил реквизиты — база зовёт эту функцию ({ open_order: id }), и бот сам открывает покупателю этот заказ.
@@ -250,7 +250,7 @@ async function handle(msg: Json) {
     await tg("setChatMenuButton", { chat_id: chatId, menu_button: { type: "web_app", text: "Магазин", web_app: { url: SHOP_URL } } });
     await tg("sendMessage", {
       chat_id: chatId,
-      text: "Привет! Это ТЕМП — мужская одежда для бега, зала и улицы 🏃\n\n" +
+      text: "Привет! Это VEXA — мужская одежда для бега, зала и улицы 🏃\n\n" +
         "🛍 Каталог открывается кнопкой «Магазин» слева от поля ввода.\n" +
         "📦 «Мои заказы» внизу — статус заказа, реквизиты для оплаты и связь с менеджером.\n\n" +
         "Появился вопрос по заказу? Пишите прямо сюда — менеджер ответит.",
@@ -258,7 +258,7 @@ async function handle(msg: Json) {
     });
     return;
   }
-  if (text === BTN_SHOP || /^\/shop\b/.test(text)) return reply(chatId, "Каталог ТЕМП 👇", true);
+  if (text === BTN_SHOP || /^\/shop\b/.test(text)) return reply(chatId, "Каталог VEXA 👇", true);
   if (text === BTN_ORDERS || /^\/orders\b/.test(text)) return sendOrders(chatId, msg.from.id);
 
   // Файл: фото (берём самое крупное) или документ PDF / картинка

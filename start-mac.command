@@ -1,5 +1,5 @@
 #!/bin/bash
-# ТЕМП MEN — запуск на Mac. Первый раз: правый клик по файлу → «Открыть».
+# VEXA MEN — запуск на Mac. Первый раз: правый клик по файлу → «Открыть».
 cd "$(dirname "$0")"
 NODE="$(command -v node || true)"
 [ -z "$NODE" ] && [ -x runtime/node/bin/node ] && NODE="runtime/node/bin/node"

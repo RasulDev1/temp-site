@@ -1,4 +1,4 @@
-// ТЕМП MEN — запуск в одно нажатие.
+// VEXA MEN — запуск в одно нажатие.
 // Сам спрашивает токен бота, определяет ваш Telegram ID, скачивает туннель,
 // запускает сервер и привязывает магазин к кнопке меню бота. BotFather трогать не нужно.
 
@@ -317,7 +317,7 @@ async function run() {
   const major = Number(process.versions.node.split(".")[0]);
   if (major < 18) throw new Error(`Нужен Node.js 18 или новее, у вас ${process.versions.node}. Установите новую версию с https://nodejs.org`);
 
-  say("\nТЕМП MEN — запуск магазина\n");
+  say("\nVEXA MEN — запуск магазина\n");
   const env = readEnv();
   netproxy_detected = await netproxy.detectProxy(env.PROXY);
   say(netproxy_detected ? `Прокси: ${proxyInfo()}` : "Прокси в настройках системы не найден, подключаюсь напрямую.");

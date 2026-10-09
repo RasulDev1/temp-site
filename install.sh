@@ -1,5 +1,5 @@
 #!/bin/bash
-# ТЕМП MEN — установка на VPS (Ubuntu / Debian).
+# VEXA MEN — установка на VPS (Ubuntu / Debian).
 # Запуск из папки проекта:  sudo bash install.sh
 # Повторный запуск обновляет код, не трогая товары, заказы и настройки.
 #
@@ -67,7 +67,7 @@ chmod 600 "$APP_DIR/.env"
 say "5/5 Автозапуск и HTTPS…"
 cat > /etc/systemd/system/$SERVICE.service <<EOF
 [Unit]
-Description=ТЕМП MEN — магазин в Telegram
+Description=VEXA MEN — магазин в Telegram
 After=network-online.target
 Wants=network-online.target
 

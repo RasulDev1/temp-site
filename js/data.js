@@ -40,7 +40,7 @@ export const BASE_PRODUCTS = [
     colors: ["#D8C8B0", "#1B1B1F"], colorNames: { "#D8C8B0": "Бежевый", "#1B1B1F": "Чёрный" }, sizes: SIZES,
     photo: img("5-beige"), colorPhotos: { "#D8C8B0": img("5-beige"), "#1B1B1F": img("5-black") },
     photoPosition: "50% 32%", photoAuthor: "Monstera Production" },
-  { id: 6, category: "run", name: "Ветровка Tempo Shell", price: 7990, isNew: true,
+  { id: 6, category: "run", name: "Ветровка Storm Shell", price: 7990, isNew: true,
     description: "Лёгкая, складывается в собственный карман, водоотталкивающая пропитка.",
     colors: ["#3A3D42"], sizes: SIZES, soldOutSizes: ["S"], photo: img("6"), photoPosition: "75% 30%", photoAuthor: "Liliana Drew" },
   { id: 7, category: "street", name: "Кроссовки Street Low", price: 12990, isNew: true,
